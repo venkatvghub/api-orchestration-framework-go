@@ -6,6 +6,18 @@
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Documentation](https://img.shields.io/badge/docs-available-brightgreen.svg)](docs/)
 
+## 🎯 Why Use This Framework?
+
+> **📋 For detailed motivation, requirements analysis, and design choices, see our [Architecture & Design Document](api_orchestration_architecture.md)**
+
+| Problem | Solution |
+|---------|----------|
+| **Multiple API calls from mobile** | Single BFF endpoint with parallel data fetching |
+| **Complex data transformation** | Declarative transformation pipeline |
+| **Poor error handling** | Built-in retry, circuit breakers, and fallbacks |
+| **No observability** | Automatic Prometheus metrics and structured logging |
+| **Slow mobile responses** | Field selection, caching, and compression |
+
 ## 🚀 Quick Start (2 minutes)
 
 ```bash
@@ -39,15 +51,7 @@ func main() {
 }
 ```
 
-## 🎯 Why Use This Framework?
 
-| Problem | Solution |
-|---------|----------|
-| **Multiple API calls from mobile** | Single BFF endpoint with parallel data fetching |
-| **Complex data transformation** | Declarative transformation pipeline |
-| **Poor error handling** | Built-in retry, circuit breakers, and fallbacks |
-| **No observability** | Automatic Prometheus metrics and structured logging |
-| **Slow mobile responses** | Field selection, caching, and compression |
 
 ## 🏗️ Core Concepts
 
