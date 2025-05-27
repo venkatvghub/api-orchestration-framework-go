@@ -516,17 +516,6 @@ func (h *OnboardingHandler) createMockAPIProgressStep() *httpsteps.HTTPStep {
 		SaveAs("user_progress")
 }
 
-func (h *OnboardingHandler) createCacheStoreStep(screenID, deviceType string) interfaces.Step {
-	return flow.StepFunc(func(ctx interfaces.ExecutionContext) error {
-		screenData, _ := ctx.Get("screen_data")
-		if screenData != nil {
-			cacheKey := h.cacheService.GetScreenCacheKey(screenID, deviceType)
-			h.cacheService.Set(cacheKey, screenData)
-		}
-		return nil
-	})
-}
-
 func (h *OnboardingHandler) createCacheCleanupStep() interfaces.Step {
 	return flow.StepFunc(func(ctx interfaces.ExecutionContext) error {
 		// Clear the entire cache as a simple cleanup approach
@@ -811,21 +800,6 @@ func (h *OnboardingHandler) createExtractScreenDataStep() interfaces.Step {
 		}
 
 		ctx.Set("screen_data", screenData)
-		return nil
-	})
-}
-
-func (h *OnboardingHandler) createDebugRawDataStep() interfaces.Step {
-	return flow.StepFunc(func(ctx interfaces.ExecutionContext) error {
-		screenResponse, _ := ctx.GetMap("mock_api_screen")
-		ctx.Set("debug_raw_data", screenResponse)
-		return nil
-	})
-}
-
-func (h *OnboardingHandler) createDebugContextStep() interfaces.Step {
-	return flow.StepFunc(func(ctx interfaces.ExecutionContext) error {
-		// This step is intentionally empty as the debug context values are already captured in the flow
 		return nil
 	})
 }
