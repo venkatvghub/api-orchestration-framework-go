@@ -269,8 +269,10 @@ ctx := flow.NewContextWithConfig(config)
 
 ### 🚀 Getting Started
 - [**5-Minute Tutorial**](docs/getting-started.md) - Get up and running quickly
+- [**Building BFF Layers**](docs/building-bff-layer.md) - Complete guide to building Backend for Frontend layers
 - [**BFF Patterns**](docs/bff-patterns.md) - Mobile-specific implementation patterns
 - [**Configuration**](docs/config.md) - Environment and programmatic configuration
+- [**Dependency Injection**](docs/dependency_injection.md) - Comprehensive DI guide with Uber Fx
 
 ### 🔧 Core Components
 - [**Flow Engine**](docs/flow.md) - Orchestration patterns and advanced features
