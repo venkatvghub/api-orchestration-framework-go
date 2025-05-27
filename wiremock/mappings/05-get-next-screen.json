@@ -1,0 +1,32 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/api/screens/([a-zA-Z_]+)/next",
+    "headers": {
+      "Content-Type": {
+        "equalTo": "application/json"
+      },
+      "X-API-Version": {
+        "equalTo": "2.0"
+      }
+    },
+    "queryParameters": {
+      "user_id": {
+        "matches": ".*"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "success": true,
+      "data": {
+        "next_screen": "{{#eq request.pathSegments.[2] 'welcome'}}personal_info{{/eq}}{{#eq request.pathSegments.[2] 'personal_info'}}preferences{{/eq}}{{#eq request.pathSegments.[2] 'preferences'}}verification{{/eq}}{{#eq request.pathSegments.[2] 'verification'}}completion{{/eq}}{{#eq request.pathSegments.[2] 'completion'}}null{{/eq}}",
+        "progress": 0.4
+      }
+    }
+  }
+} 

@@ -1,0 +1,29 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/api/users/([a-zA-Z0-9_]+)/progress",
+    "headers": {
+      "Content-Type": {
+        "equalTo": "application/json"
+      },
+      "X-API-Version": {
+        "equalTo": "2.0"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "success": true,
+      "data": {
+        "current_screen": "preferences",
+        "completed_steps": 2,
+        "total_steps": 5,
+        "percent_complete": 0.4
+      }
+    }
+  }
+} 

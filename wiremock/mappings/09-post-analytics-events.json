@@ -1,0 +1,27 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPath": "/api/analytics/events",
+    "headers": {
+      "Content-Type": {
+        "equalTo": "application/json"
+      },
+      "X-API-Version": {
+        "equalTo": "2.0"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "success": true,
+      "data": {
+        "tracked": true,
+        "event_id": "evt_{{randomValue length=6 type='ALPHANUMERIC'}}"
+      }
+    }
+  }
+} 

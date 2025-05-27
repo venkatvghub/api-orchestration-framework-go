@@ -239,8 +239,23 @@ func (h *HTTPStep) Run(ctx interfaces.ExecutionContext) error {
 		return fmt.Errorf("failed to prepare request: %w", err)
 	}
 
-	// Execute request with resilient client
-	resp, err := h.client.Do(req)
+	// Create a simple but robust HTTP client
+	client := &http.Client{
+		Timeout: h.responseTimeout,
+		Transport: &http.Transport{
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 10,
+			IdleConnTimeout:     90 * time.Second,
+			DisableKeepAlives:   false,
+			DisableCompression:  false,
+		},
+	}
+	if h.responseTimeout == 0 {
+		client.Timeout = 60 * time.Second // Default timeout
+	}
+
+	// Execute request
+	resp, err := client.Do(req)
 	if err != nil {
 		metrics.RecordHTTPRequest(h.method, h.url, 0, time.Since(start))
 		return fmt.Errorf("HTTP request failed: %w", err)

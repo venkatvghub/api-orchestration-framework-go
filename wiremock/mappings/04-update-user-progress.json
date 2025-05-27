@@ -1,0 +1,26 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/api/users/([a-zA-Z0-9_]+)/progress",
+    "headers": {
+      "Content-Type": {
+        "equalTo": "application/json"
+      },
+      "X-API-Version": {
+        "equalTo": "2.0"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "success": true,
+      "data": {
+        "updated": true
+      }
+    }
+  }
+} 

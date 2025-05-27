@@ -381,14 +381,35 @@ type choiceStep struct {
 }
 
 func (cs *choiceStep) Run(ctx interfaces.ExecutionContext) error {
+	// Check if context is already cancelled
+	select {
+	case <-ctx.Context().Done():
+		return ctx.Context().Err()
+	default:
+	}
+
 	// Check each branch condition
 	for _, branch := range cs.branches {
+		// Check for cancellation before evaluating condition
+		select {
+		case <-ctx.Context().Done():
+			return ctx.Context().Err()
+		default:
+		}
+
 		if branch.condition(ctx) {
 			ctx.Logger().Info("Choice condition met",
 				zap.String("choice", cs.Name()))
 
 			// Execute branch steps
 			for _, step := range branch.steps {
+				// Check for cancellation before each step
+				select {
+				case <-ctx.Context().Done():
+					return ctx.Context().Err()
+				default:
+				}
+
 				if err := step.Run(ctx); err != nil {
 					return err
 				}
@@ -399,6 +420,13 @@ func (cs *choiceStep) Run(ctx interfaces.ExecutionContext) error {
 
 	// Execute otherwise branch if no condition matched
 	if cs.otherwise != nil {
+		// Check for cancellation before otherwise branch
+		select {
+		case <-ctx.Context().Done():
+			return ctx.Context().Err()
+		default:
+		}
+
 		ctx.Logger().Info("Choice executing otherwise branch",
 			zap.String("choice", cs.Name()))
 		return cs.otherwise.Run(ctx)

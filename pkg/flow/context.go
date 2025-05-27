@@ -64,6 +64,21 @@ func NewContextWithConfig(cfg *config.FrameworkConfig) *Context {
 	}
 }
 
+// NewContextWithGinContext creates a new context from a Gin context
+func NewContextWithGinContext(ginCtx context.Context, cfg *config.FrameworkConfig) *Context {
+	if cfg == nil {
+		cfg = config.DefaultConfig()
+	}
+	return &Context{
+		ctx:         ginCtx,
+		values:      make(map[string]interface{}),
+		executionID: generateExecutionID(),
+		startTime:   time.Now(),
+		timeout:     cfg.Timeouts.FlowExecution,
+		config:      cfg,
+	}
+}
+
 // Set stores a value in the context with thread safety
 func (c *Context) Set(key string, value interface{}) {
 	c.mu.Lock()
@@ -195,11 +210,11 @@ func (c *Context) Clone() interfaces.ExecutionContext {
 	defer c.mu.RUnlock()
 
 	newCtx := &Context{
-		ctx:         c.ctx,
+		ctx:         c.ctx, // Preserve the original Go context for proper cancellation
 		values:      make(map[string]interface{}),
 		flowName:    c.flowName,
-		executionID: generateExecutionID(), // New execution ID for clone
-		startTime:   time.Now(),
+		executionID: c.executionID, // Keep same execution ID for traceability
+		startTime:   c.startTime,   // Keep same start time for accurate duration tracking
 		logger:      c.logger,
 		span:        c.span,
 		timeout:     c.timeout,
@@ -238,17 +253,16 @@ func (c *Context) WithFlowName(name string) *Context {
 	return c
 }
 
+// WithContext sets the underlying Go context
+func (c *Context) WithContext(ctx context.Context) *Context {
+	c.ctx = ctx
+	return c
+}
+
 // Context returns the underlying Go context
 func (c *Context) Context() context.Context {
-	if c.timeout > 0 {
-		ctx, cancel := context.WithTimeout(c.ctx, c.timeout)
-		// Store cancel function to be called when context is done
-		go func() {
-			<-ctx.Done()
-			cancel()
-		}()
-		return ctx
-	}
+	// Return the original context directly to avoid creating new timeout contexts
+	// on every call, which would cause context leaks
 	return c.ctx
 }
 

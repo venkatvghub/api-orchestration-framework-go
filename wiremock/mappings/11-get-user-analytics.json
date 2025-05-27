@@ -1,0 +1,29 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/api/analytics/users/([a-zA-Z0-9_]+)",
+    "headers": {
+      "Content-Type": {
+        "equalTo": "application/json"
+      },
+      "X-API-Version": {
+        "equalTo": "2.0"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "success": true,
+      "data": {
+        "total_events": 25,
+        "screen_views": 15,
+        "submissions": 8,
+        "time_spent_seconds": 540
+      }
+    }
+  }
+} 

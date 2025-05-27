@@ -6,18 +6,18 @@ import (
 
 // OnboardingScreen represents a single onboarding screen configuration
 type OnboardingScreen struct {
-	ID         string                 `json:"id"`
-	Version    string                 `json:"version"`
-	Title      string                 `json:"title"`
-	Subtitle   string                 `json:"subtitle,omitempty"`
-	Type       ScreenType             `json:"type"`
-	Fields     []ScreenField          `json:"fields"`
-	Actions    []ScreenAction         `json:"actions"`
-	Validation ValidationRules        `json:"validation"`
-	Metadata   map[string]interface{} `json:"metadata,omitempty"`
-	NextScreen string                 `json:"next_screen,omitempty"`
-	CreatedAt  time.Time              `json:"created_at"`
-	UpdatedAt  time.Time              `json:"updated_at"`
+	ID          string                 `json:"id"`
+	Title       string                 `json:"title"`
+	Description string                 `json:"description,omitempty"`
+	Subtitle    string                 `json:"subtitle,omitempty"`
+	Type        ScreenType             `json:"type"`
+	Fields      []ScreenField          `json:"fields"`
+	Actions     []ScreenAction         `json:"actions"`
+	Validation  ValidationRules        `json:"validation"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	NextScreen  string                 `json:"next_screen,omitempty"`
+	CreatedAt   time.Time              `json:"created_at"`
+	UpdatedAt   time.Time              `json:"updated_at"`
 }
 
 // ScreenType defines the type of onboarding screen
@@ -27,7 +27,6 @@ const (
 	ScreenTypeWelcome      ScreenType = "welcome"
 	ScreenTypePersonalInfo ScreenType = "personal_info"
 	ScreenTypePreferences  ScreenType = "preferences"
-	ScreenTypePermissions  ScreenType = "permissions"
 	ScreenTypeVerification ScreenType = "verification"
 	ScreenTypeCompletion   ScreenType = "completion"
 )
@@ -96,6 +95,7 @@ const (
 	ActionTypeSubmit   ActionType = "submit"
 	ActionTypeBack     ActionType = "back"
 	ActionTypeExternal ActionType = "external"
+	ActionTypeAction   ActionType = "action"
 )
 
 // ValidationRules defines validation rules for the entire screen
@@ -108,7 +108,6 @@ type ValidationRules struct {
 type OnboardingFlow struct {
 	UserID           string                 `json:"user_id"`
 	FlowID           string                 `json:"flow_id"`
-	Version          string                 `json:"version"`
 	CurrentScreen    string                 `json:"current_screen"`
 	CompletedScreens []string               `json:"completed_screens"`
 	UserData         map[string]interface{} `json:"user_data"`
@@ -117,6 +116,7 @@ type OnboardingFlow struct {
 	StartedAt        time.Time              `json:"started_at"`
 	CompletedAt      *time.Time             `json:"completed_at,omitempty"`
 	LastActivity     time.Time              `json:"last_activity"`
+	TotalScreens     int                    `json:"total_screens"`
 	Metadata         map[string]interface{} `json:"metadata,omitempty"`
 }
 
@@ -136,7 +136,6 @@ type ScreenSubmission struct {
 	UserID     string                 `json:"user_id"`
 	Data       map[string]interface{} `json:"data"`
 	Timestamp  time.Time              `json:"timestamp"`
-	Version    string                 `json:"version"`
 	DeviceInfo DeviceInfo             `json:"device_info"`
 }
 
@@ -147,31 +146,6 @@ type DeviceInfo struct {
 	AppVersion string `json:"app_version"`
 	OSVersion  string `json:"os_version,omitempty"`
 	UserAgent  string `json:"user_agent,omitempty"`
-}
-
-// OnboardingAnalytics represents analytics data for onboarding
-type OnboardingAnalytics struct {
-	UserID           string                  `json:"user_id"`
-	FlowID           string                  `json:"flow_id"`
-	TotalScreens     int                     `json:"total_screens"`
-	CompletedScreens int                     `json:"completed_screens"`
-	CompletionRate   float64                 `json:"completion_rate"`
-	TimeSpent        time.Duration           `json:"time_spent"`
-	DropOffPoints    []string                `json:"drop_off_points"`
-	ScreenMetrics    map[string]ScreenMetric `json:"screen_metrics"`
-	DeviceInfo       DeviceInfo              `json:"device_info"`
-	CreatedAt        time.Time               `json:"created_at"`
-}
-
-// ScreenMetric contains metrics for a specific screen
-type ScreenMetric struct {
-	ScreenID    string        `json:"screen_id"`
-	ViewCount   int           `json:"view_count"`
-	SubmitCount int           `json:"submit_count"`
-	AverageTime time.Duration `json:"average_time"`
-	DropOffRate float64       `json:"drop_off_rate"`
-	ErrorCount  int           `json:"error_count"`
-	LastViewed  time.Time     `json:"last_viewed"`
 }
 
 // APIResponse represents a standard API response
@@ -195,44 +169,80 @@ type Metadata struct {
 	Version     string `json:"version"`
 	RequestID   string `json:"request_id,omitempty"`
 	ProcessTime string `json:"process_time,omitempty"`
+	Source      string `json:"source,omitempty"`
 }
 
-// ScreenVersionConfig represents version-specific configuration for screens
-type ScreenVersionConfig struct {
-	Version    string                 `json:"version"`
-	Enabled    bool                   `json:"enabled"`
-	Percentage float64                `json:"percentage"` // For A/B testing
-	Features   []string               `json:"features"`
-	Overrides  map[string]interface{} `json:"overrides,omitempty"`
-	ExpiresAt  *time.Time             `json:"expires_at,omitempty"`
+// MockAPIRequest represents a request to mock API
+type MockAPIRequest struct {
+	UserID     string                 `json:"user_id"`
+	ScreenID   string                 `json:"screen_id,omitempty"`
+	Data       map[string]interface{} `json:"data"`
+	Timestamp  time.Time              `json:"timestamp"`
+	DeviceInfo map[string]interface{} `json:"device_info,omitempty"`
 }
 
-// FlowConfiguration represents the overall flow configuration
-type FlowConfiguration struct {
-	ID        string                         `json:"id"`
-	Name      string                         `json:"name"`
-	Version   string                         `json:"version"`
-	Screens   []string                       `json:"screens"`
-	Versions  map[string]ScreenVersionConfig `json:"versions"`
-	Rules     FlowRules                      `json:"rules"`
-	Analytics AnalyticsConfig                `json:"analytics"`
-	CreatedAt time.Time                      `json:"created_at"`
-	UpdatedAt time.Time                      `json:"updated_at"`
+// MockAPIResponse represents a response from mock API
+type MockAPIResponse struct {
+	Success bool                   `json:"success"`
+	Data    map[string]interface{} `json:"data"`
+	Error   string                 `json:"error,omitempty"`
+	Message string                 `json:"message,omitempty"`
 }
 
-// FlowRules defines rules for flow progression
-type FlowRules struct {
-	AllowSkip       bool     `json:"allow_skip"`
-	RequiredScreens []string `json:"required_screens"`
-	ConditionalFlow bool     `json:"conditional_flow"`
-	TimeoutMinutes  int      `json:"timeout_minutes"`
+// SubmissionResponse represents the response after submitting a screen
+type SubmissionResponse struct {
+	Success    bool                   `json:"success"`
+	NextScreen string                 `json:"next_screen,omitempty"`
+	Message    string                 `json:"message,omitempty"`
+	Metadata   map[string]interface{} `json:"metadata,omitempty"`
 }
 
-// AnalyticsConfig defines analytics collection settings
-type AnalyticsConfig struct {
-	Enabled          bool     `json:"enabled"`
-	TrackViews       bool     `json:"track_views"`
-	TrackSubmissions bool     `json:"track_submissions"`
-	TrackTiming      bool     `json:"track_timing"`
-	CustomEvents     []string `json:"custom_events,omitempty"`
+// OnboardingProgress represents user progress through onboarding
+type OnboardingProgress struct {
+	UserID          string    `json:"user_id"`
+	CurrentScreen   string    `json:"current_screen"`
+	CompletedSteps  int       `json:"completed_steps"`
+	TotalSteps      int       `json:"total_steps"`
+	PercentComplete float64   `json:"percent_complete"`
+	LastUpdated     time.Time `json:"last_updated"`
+}
+
+// UserAnalytics represents analytics data for a user
+type UserAnalytics struct {
+	UserID       string                 `json:"user_id"`
+	TotalEvents  int                    `json:"total_events"`
+	ScreenViews  int                    `json:"screen_views"`
+	Submissions  int                    `json:"submissions"`
+	TimeSpent    time.Duration          `json:"time_spent"`
+	LastActivity time.Time              `json:"last_activity"`
+	DeviceInfo   map[string]interface{} `json:"device_info"`
+	CustomEvents []AnalyticsEvent       `json:"custom_events"`
+}
+
+// AnalyticsEvent represents an analytics event
+type AnalyticsEvent struct {
+	EventType  string                 `json:"event_type"`
+	UserID     string                 `json:"user_id"`
+	ScreenID   string                 `json:"screen_id,omitempty"`
+	Properties map[string]interface{} `json:"properties"`
+	Timestamp  time.Time              `json:"timestamp"`
+}
+
+// VerificationRequest represents a verification request
+type VerificationRequest struct {
+	UserID           string `json:"user_id"`
+	Type             string `json:"type"`   // email, phone
+	Target           string `json:"target"` // email address or phone number
+	Code             string `json:"code,omitempty"`
+	VerificationCode string `json:"verification_code,omitempty"`
+}
+
+// VerificationResponse represents a verification response
+type VerificationResponse struct {
+	Success      bool   `json:"success"`
+	Message      string `json:"message"`
+	Verified     bool   `json:"verified"`
+	CodeSent     bool   `json:"code_sent,omitempty"`
+	ExpiresAt    string `json:"expires_at,omitempty"`
+	AttemptsLeft int    `json:"attempts_left,omitempty"`
 }

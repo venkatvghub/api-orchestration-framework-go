@@ -2,82 +2,188 @@
 
 ## Overview
 
-The `pkg/di` package provides comprehensive dependency injection for the API Orchestration Framework using [Uber Fx](https://github.com/uber-go/fx). It centralizes dependency management across all framework modules, enabling clean architecture, testability, and modular design.
+The dependency injection (DI) approach in the API Orchestration Framework has been **decentralized and isolated** to provide maximum flexibility and extensibility. Instead of a single centralized DI package, each example application now contains its own independent DI module tailored to its specific needs.
 
-## Purpose
+This approach enables:
+- **Application-Specific Configuration**: Each application can define its own DI providers optimized for its use case
+- **Independent Evolution**: Applications can evolve their DI configuration without affecting others
+- **Reduced Coupling**: No shared DI dependencies between different applications
+- **Enhanced Testability**: Each application can mock and test its DI independently
+- **Extensibility**: Easy to add new applications with custom DI configurations
 
-The dependency injection package serves as the foundation for:
-- **Centralized Dependency Management**: All framework components use consistent DI patterns
-- **Loose Coupling**: Components depend on interfaces, not concrete implementations
-- **Testability**: Easy mocking and testing through dependency injection
-- **Modularity**: Components can be easily swapped and extended
-- **Configuration Management**: Centralized configuration injection
-- **Lifecycle Management**: Automatic startup/shutdown coordination
+## Architecture
 
-## Core Architecture
+### Isolated DI Structure
 
-### DI Module Structure
+Each example application contains its own `di/` directory with:
+```
+examples/
+├── mobile-onboarding-v2/
+│   └── di/
+│       └── di.go          # Onboarding-specific DI configuration
+├── mobile-bff/
+│   └── di/
+│       └── di.go          # BFF-specific DI configuration
+└── [other-examples]/
+    └── di/
+        └── di.go          # Application-specific DI configuration
+```
 
-The main DI module provides all framework dependencies:
+### Core DI Pattern
+
+Each DI module follows the same core pattern but with application-specific providers:
+
 ```go
+package di
+
+import (
+    // Standard imports
+    "go.uber.org/fx"
+    "go.uber.org/zap"
+    
+    // Framework imports
+    "github.com/venkatvghub/api-orchestration-framework/pkg/config"
+    "github.com/venkatvghub/api-orchestration-framework/pkg/flow"
+    // ... other framework imports
+)
+
+// Module returns application-specific DI configuration
 func Module() fx.Option {
     return fx.Options(
         fx.Provide(
-            // Core dependencies
+            // Core dependencies (common across all apps)
             provideConfig,
             provideLogger,
             provideMetrics,
             
-            // Framework components
-            provideStepRegistry,
-            provideFlowContext,
-            provideHTTPClient,
-            provideFlowFactory,
-            
-            // Transformers
-            provideFieldTransformer,
-            provideMobileTransformer,
-            provideFlattenTransformer,
-            
-            // Validators
-            provideRequiredFieldsValidator,
-            provideEmailValidator,
-            
-            // Infrastructure
-            provideRouter,
-            provideServer,
+            // Application-specific providers
+            // ...
         ),
     )
 }
 ```
 
-### Available Dependencies
+## Application-Specific DI Configurations
 
-#### Core Dependencies
-- `*config.FrameworkConfig` - Framework configuration
-- `*zap.Logger` - Structured logger
-- `metrics.MetricsCollector` - Metrics collection
+### Mobile Onboarding v2 DI
 
-#### Framework Components
-- `*registry.StepRegistry` - Step registry for dynamic step creation
-- `interfaces.ExecutionContext` - Flow execution context
-- `httpsteps.HTTPClient` - Resilient HTTP client
-- `*di.FlowFactory` - Factory for creating flows and contexts
+**Location**: `examples/mobile-onboarding-v2/di/di.go`
 
-#### Transformers
-- `transformers.Transformer` (Field) - Field selection transformer
-- `transformers.Transformer` (Mobile) - Mobile optimization transformer
-- `transformers.Transformer` (Flatten) - Data flattening transformer
+**Purpose**: Optimized for mobile onboarding flows with WireMock integration
 
-#### Validators
-- `validators.Validator` (Required Fields) - Required field validation
-- `validators.Validator` (Email) - Email validation
+**Key Features**:
+- Single mobile transformer for onboarding screens
+- Onboarding-specific validators (user_id, screen_id)
+- Metrics namespace: "mobile_onboarding.v2"
+- HTTP client optimized for mock API calls
 
-#### Infrastructure
-- `*gin.Engine` - HTTP router
-- `*http.Server` - HTTP server
+```go
+// Mobile Onboarding specific providers
+func provideMobileTransformer() transformers.Transformer {
+    return transformers.NewMobileTransformer([]string{
+        "id", "title", "description", "type", "fields", "actions", "next_screen"
+    })
+}
+
+func provideRequiredFieldsValidator() validators.Validator {
+    return validators.NewRequiredFieldsValidator("user_id", "screen_id")
+}
+
+func provideMetrics() metrics.MetricsCollector {
+    return metrics.NewPrometheusMetrics("mobile_onboarding", "v2")
+}
+```
+
+### Mobile BFF DI
+
+**Location**: `examples/mobile-bff/di/di.go`
+
+**Purpose**: Comprehensive BFF layer with multiple transformation capabilities
+
+**Key Features**:
+- Multiple named transformers (mobile, field, flatten)
+- BFF-specific validators (user_id, request_id)
+- Metrics namespace: "mobile_bff.api"
+- HTTP client optimized for backend API aggregation
+
+```go
+// Mobile BFF specific providers with named transformers
+fx.Annotated{
+    Name:   "mobile",
+    Target: provideMobileTransformer,
+},
+fx.Annotated{
+    Name:   "field", 
+    Target: provideFieldTransformer,
+},
+fx.Annotated{
+    Name:   "flatten",
+    Target: provideFlattenTransformer,
+},
+```
 
 ## Quick Start
+
+### Creating a New Application with DI
+
+1. **Create DI Directory**
+   ```bash
+   mkdir examples/my-new-app/di
+   ```
+
+2. **Create DI Configuration**
+   ```go
+   // examples/my-new-app/di/di.go
+   package di
+   
+   import (
+       "go.uber.org/fx"
+       // ... framework imports
+   )
+   
+   func Module() fx.Option {
+       return fx.Options(
+           fx.Provide(
+               // Core dependencies
+               provideConfig,
+               provideLogger,
+               provideMetrics,
+               
+               // App-specific providers
+               provideCustomTransformer,
+               provideCustomValidator,
+               
+               // Infrastructure
+               provideRouter,
+               provideServer,
+           ),
+       )
+   }
+   
+   // App-specific providers
+   func provideCustomTransformer() transformers.Transformer {
+       return transformers.NewFieldTransformer("my_app", []string{"custom", "fields"})
+   }
+   ```
+
+3. **Use in Main Application**
+   ```go
+   // examples/my-new-app/main.go
+   package main
+   
+   import (
+       "go.uber.org/fx"
+       "github.com/venkatvghub/api-orchestration-framework/examples/my-new-app/di"
+   )
+   
+   func main() {
+       app := fx.New(
+           di.Module(),
+           fx.Invoke(startServer),
+       )
+       app.Run()
+   }
+   ```
 
 ### Basic Application Setup
 
@@ -86,7 +192,7 @@ package main
 
 import (
     "go.uber.org/fx"
-    "github.com/venkatvghub/api-orchestration-framework/pkg/di"
+    "github.com/venkatvghub/api-orchestration-framework/examples/mobile-onboarding-v2/di"
 )
 
 func main() {
@@ -101,7 +207,7 @@ func startApplication(
     flowFactory *di.FlowFactory,
     logger *zap.Logger,
 ) {
-    logger.Info("Application started with DI")
+    logger.Info("Application started with isolated DI")
     
     // Create and execute flows
     flow := flowFactory.CreateFlow("example")
@@ -114,110 +220,32 @@ func startApplication(
 }
 ```
 
-### Integration with Main Application
-
-```go
-package main
-
-import (
-    "context"
-    "net/http"
-    "time"
-
-    "github.com/gin-gonic/gin"
-    "go.uber.org/fx"
-    "go.uber.org/zap"
-
-    "github.com/venkatvghub/api-orchestration-framework/examples/mobile-bff/handlers"
-    "github.com/venkatvghub/api-orchestration-framework/examples/mobile-bff/middleware"
-    "github.com/venkatvghub/api-orchestration-framework/pkg/config"
-    "github.com/venkatvghub/api-orchestration-framework/pkg/di"
-    "github.com/venkatvghub/api-orchestration-framework/pkg/metrics"
-)
-
-func main() {
-    app := fx.New(
-        di.Module(),
-        fx.Invoke(startServer),
-    )
-    app.Run()
-}
-
-func startServer(lc fx.Lifecycle, server *http.Server, logger *zap.Logger, router *gin.Engine, cfg *config.FrameworkConfig, metricsCollector metrics.MetricsCollector) {
-    // Setup router with middleware and routes
-    setupRouter(router, cfg, logger, metricsCollector)
-    
-    lc.Append(fx.Hook{
-        OnStart: func(ctx context.Context) error {
-            go func() {
-                logger.Info("Starting Mobile BFF server",
-                    zap.String("addr", server.Addr),
-                    zap.String("version", "1.0.0"))
-
-                if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-                    logger.Fatal("Server failed to start", zap.Error(err))
-                }
-            }()
-            return nil
-        },
-        OnStop: func(ctx context.Context) error {
-            logger.Info("Shutting down server")
-            return server.Shutdown(ctx)
-        },
-    })
-}
-
-func setupRouter(router *gin.Engine, cfg *config.FrameworkConfig, logger *zap.Logger, metricsCollector metrics.MetricsCollector) {
-    // Add middleware
-    router.Use(middleware.LoggingMiddleware(logger))
-    router.Use(middleware.MetricsMiddleware(metricsCollector))
-    router.Use(middleware.CORSMiddleware())
-    
-    // Add routes
-    api := router.Group("/api/v1")
-    {
-        api.GET("/health", handlers.HealthHandler())
-        api.POST("/mobile/dashboard", handlers.MobileDashboardHandler())
-        api.POST("/mobile/profile", handlers.MobileProfileHandler())
-    }
-    
-    // Metrics endpoint
-    router.GET("/metrics", gin.WrapH(metrics.MetricsHandler()))
-}
-```
-
 ## Usage Patterns
 
-### 1. Flow Orchestration with DI
+### 1. Application-Specific Flow Orchestration
 
 ```go
-type UserService struct {
+// In your application's service layer
+type OnboardingService struct {
     flowFactory *di.FlowFactory
     logger      *zap.Logger
 }
 
-func NewUserService(flowFactory *di.FlowFactory, logger *zap.Logger) *UserService {
-    return &UserService{
+func NewOnboardingService(flowFactory *di.FlowFactory, logger *zap.Logger) *OnboardingService {
+    return &OnboardingService{
         flowFactory: flowFactory,
         logger:      logger,
     }
 }
 
-func (s *UserService) ProcessUser(userData map[string]interface{}) error {
-    flow := s.flowFactory.CreateFlow("user_processing").
+func (s *OnboardingService) ProcessOnboarding(userData map[string]interface{}) error {
+    flow := s.flowFactory.CreateFlow("onboarding_flow").
         StepFunc("validate", func(ctx interfaces.ExecutionContext) error {
-            s.logger.Info("Validating user data")
-            // Validation logic
+            s.logger.Info("Validating onboarding data")
             return nil
         }).
         StepFunc("transform", func(ctx interfaces.ExecutionContext) error {
-            s.logger.Info("Transforming user data")
-            // Transformation logic
-            return nil
-        }).
-        StepFunc("save", func(ctx interfaces.ExecutionContext) error {
-            s.logger.Info("Saving user data")
-            // Save logic
+            s.logger.Info("Transforming for mobile")
             return nil
         })
     
@@ -226,148 +254,89 @@ func (s *UserService) ProcessUser(userData map[string]interface{}) error {
     
     result, err := flow.Execute(ctx)
     if err != nil {
-        s.logger.Error("User processing failed", zap.Error(err))
+        s.logger.Error("Onboarding failed", zap.Error(err))
         return err
     }
     
-    s.logger.Info("User processed successfully", 
+    s.logger.Info("Onboarding completed", 
         zap.Duration("duration", result.Duration))
     return nil
 }
 ```
 
-### 2. HTTP Service with DI
+### 2. Named Transformer Usage (Mobile BFF)
 
 ```go
-type APIService struct {
-    httpClient httpsteps.HTTPClient
-    logger     *zap.Logger
+type BFFService struct {
+    mobileTransformer  transformers.Transformer `name:"mobile"`
+    fieldTransformer   transformers.Transformer `name:"field"`
+    flattenTransformer transformers.Transformer `name:"flatten"`
+    logger             *zap.Logger
 }
 
-func NewAPIService(httpClient httpsteps.HTTPClient, logger *zap.Logger) *APIService {
-    return &APIService{
-        httpClient: httpClient,
-        logger:     logger,
-    }
-}
-
-func (s *APIService) FetchUserData(userID string) (map[string]interface{}, error) {
-    url := fmt.Sprintf("/api/users/%s", userID)
-    
-    req, err := http.NewRequest("GET", url, nil)
-    if err != nil {
-        return nil, err
-    }
-    
-    resp, err := s.httpClient.Do(req)
-    if err != nil {
-        s.logger.Error("API call failed", zap.Error(err))
-        return nil, err
-    }
-    defer resp.Body.Close()
-    
-    // Process response...
-    return userData, nil
-}
-```
-
-### 3. Data Processing with Transformers and Validators
-
-```go
-type DataProcessor struct {
-    transformer transformers.Transformer
-    validator   validators.Validator
-    logger      *zap.Logger
-}
-
-func NewDataProcessor(
-    transformer transformers.Transformer,
-    validator validators.Validator,
+func NewBFFService(
+    mobileTransformer transformers.Transformer,
+    fieldTransformer transformers.Transformer,
+    flattenTransformer transformers.Transformer,
     logger *zap.Logger,
-) *DataProcessor {
-    return &DataProcessor{
-        transformer: transformer,
-        validator:   validator,
-        logger:      logger,
+) *BFFService {
+    return &BFFService{
+        mobileTransformer:  mobileTransformer,
+        fieldTransformer:   fieldTransformer,
+        flattenTransformer: flattenTransformer,
+        logger:             logger,
     }
-}
-
-func (p *DataProcessor) ProcessData(data map[string]interface{}) (map[string]interface{}, error) {
-    // Validate input
-    if err := p.validator.Validate(data); err != nil {
-        p.logger.Error("Validation failed", zap.Error(err))
-        return nil, err
-    }
-    
-    // Transform data
-    result, err := p.transformer.Transform(data)
-    if err != nil {
-        p.logger.Error("Transformation failed", zap.Error(err))
-        return nil, err
-    }
-    
-    p.logger.Info("Data processed successfully")
-    return result, nil
 }
 ```
 
-## Creating Custom Modules
-
-### Service-Specific Module
+### 3. Custom Application DI Module
 
 ```go
-func UserModule() fx.Option {
+// Custom application with specific needs
+func CustomAppModule() fx.Option {
     return fx.Options(
         fx.Provide(
-            NewUserService,
-            NewUserRepository,
-            NewUserValidator,
-        ),
-        fx.Invoke(func(service *UserService, logger *zap.Logger) {
-            logger.Info("User module initialized")
-        }),
-    )
-}
-
-// Use in main application
-func main() {
-    app := fx.New(
-        di.Module(),    // Core framework dependencies
-        UserModule(),   // User-specific module
-        fx.Invoke(startApp),
-    )
-    app.Run()
-}
-```
-
-### Feature Module
-
-```go
-func NotificationModule() fx.Option {
-    return fx.Options(
-        fx.Provide(
-            NewNotificationService,
-            NewEmailProvider,
-            NewSMSProvider,
-            NewPushProvider,
+            // Core framework dependencies
+            provideConfig,
+            provideLogger,
+            provideMetrics,
+            
+            // Custom application providers
+            provideCustomHTTPClient,
+            provideCustomTransformer,
+            provideCustomValidator,
+            
+            // Application-specific services
+            NewCustomService,
+            NewCustomHandler,
         ),
         fx.Invoke(func(
-            service *NotificationService,
+            service *CustomService,
             logger *zap.Logger,
         ) {
-            logger.Info("Notification module initialized")
+            logger.Info("Custom application initialized")
         }),
     )
 }
+
+func provideCustomHTTPClient(cfg *config.FrameworkConfig) httpsteps.HTTPClient {
+    // Custom HTTP client configuration for this app
+    clientConfig := &httpsteps.ClientConfig{
+        RequestTimeout: 10 * time.Second,
+        MaxRetries:     5,
+        // ... custom settings
+    }
+    return httpsteps.NewResilientHTTPClient(clientConfig)
+}
 ```
 
-## Testing with DI
+## Testing with Isolated DI
 
 ### Unit Testing
 
 ```go
-func TestUserService(t *testing.T) {
-    // Create test dependencies
+func TestOnboardingService(t *testing.T) {
+    // Create test-specific DI configuration
     cfg := &config.FrameworkConfig{
         HTTP: config.HTTPConfig{
             RequestTimeout: 5 * time.Second,
@@ -377,16 +346,16 @@ func TestUserService(t *testing.T) {
     registry := registry.NewStepRegistry()
     
     flowFactory := di.NewFlowFactory(cfg, logger, registry)
-    service := NewUserService(flowFactory, logger)
+    service := NewOnboardingService(flowFactory, logger)
     
     // Test the service
     testData := map[string]interface{}{
-        "id":    "123",
-        "name":  "John Doe",
-        "email": "john@example.com",
+        "user_id":   "123",
+        "screen_id": "welcome",
+        "data":      map[string]interface{}{"accepted_terms": true},
     }
     
-    err := service.ProcessUser(testData)
+    err := service.ProcessOnboarding(testData)
     assert.NoError(t, err)
 }
 ```
@@ -395,16 +364,16 @@ func TestUserService(t *testing.T) {
 
 ```go
 func TestIntegration(t *testing.T) {
-    var userService *UserService
-    var apiService *APIService
+    var onboardingService *OnboardingService
+    var bffService *BFFService
     
     app := fx.New(
-        di.Module(),
+        di.Module(), // Use the application's DI module
         fx.Provide(
-            NewUserService,
-            NewAPIService,
+            NewOnboardingService,
+            NewBFFService,
         ),
-        fx.Populate(&userService, &apiService),
+        fx.Populate(&onboardingService, &bffService),
     )
     
     err := app.Start(context.Background())
@@ -412,10 +381,10 @@ func TestIntegration(t *testing.T) {
     defer app.Stop(context.Background())
     
     // Test integrated services
-    result, err := apiService.FetchUserData("123")
+    result, err := bffService.ProcessRequest("123")
     require.NoError(t, err)
     
-    err = userService.ProcessUser(result)
+    err = onboardingService.ProcessOnboarding(result)
     require.NoError(t, err)
 }
 ```
@@ -428,26 +397,26 @@ func TestWithMocks(t *testing.T) {
     mockHTTPClient := &MockHTTPClient{}
     mockLogger := zap.NewNop()
     
-    service := NewAPIService(mockHTTPClient, mockLogger)
+    // Create service with mocks instead of DI
+    service := NewOnboardingService(mockHTTPClient, mockLogger)
     
     // Setup mock expectations
     mockHTTPClient.On("Do", mock.Anything).Return(&http.Response{
         StatusCode: 200,
-        Body:       ioutil.NopCloser(strings.NewReader(`{"id": "123"}`)),
+        Body:       ioutil.NopCloser(strings.NewReader(`{"success": true}`)),
     }, nil)
     
     // Test with mocks
-    result, err := service.FetchUserData("123")
+    result, err := service.ProcessOnboarding(testData)
     assert.NoError(t, err)
-    assert.Equal(t, "123", result["id"])
     
     mockHTTPClient.AssertExpectations(t)
 }
 ```
 
-## Configuration with DI
+## Configuration Patterns
 
-### Environment-Specific Configuration
+### Environment-Specific DI
 
 ```go
 func DevelopmentModule() fx.Option {
@@ -456,7 +425,6 @@ func DevelopmentModule() fx.Option {
             // Override for development
             cfg.Logging.Level = "debug"
             cfg.HTTP.MaxRetries = 1
-            cfg.Cache.DefaultTTL = 1 * time.Minute
             return cfg
         }),
     )
@@ -468,7 +436,6 @@ func ProductionModule() fx.Option {
             // Override for production
             cfg.Logging.Level = "info"
             cfg.HTTP.MaxRetries = 3
-            cfg.Cache.DefaultTTL = 10 * time.Minute
             return cfg
         }),
     )
@@ -489,31 +456,38 @@ func main() {
 }
 ```
 
-### Custom Providers
+### Feature-Specific Modules
 
 ```go
-func CustomModule() fx.Option {
+func OnboardingModule() fx.Option {
     return fx.Options(
         fx.Provide(
-            // Custom HTTP client with specific configuration
-            func(cfg *config.FrameworkConfig) httpsteps.HTTPClient {
-                clientConfig := &httpsteps.ClientConfig{
-                    RequestTimeout: cfg.HTTP.RequestTimeout,
-                    MaxRetries:     cfg.HTTP.MaxRetries,
-                    EnableFallback: cfg.HTTP.EnableFallback,
-                }
-                return httpsteps.NewResilientHTTPClient(clientConfig)
-            },
-            
-            // Custom transformer with business logic
-            func() transformers.Transformer {
-                return transformers.NewFunctionTransformer("business", func(data map[string]interface{}) (map[string]interface{}, error) {
-                    // Custom business logic
-                    return data, nil
-                })
-            },
+            NewOnboardingService,
+            NewOnboardingHandler,
+            NewOnboardingValidator,
         ),
     )
+}
+
+func AnalyticsModule() fx.Option {
+    return fx.Options(
+        fx.Provide(
+            NewAnalyticsService,
+            NewAnalyticsHandler,
+            NewEventTracker,
+        ),
+    )
+}
+
+// Combine modules
+func main() {
+    app := fx.New(
+        di.Module(),           // Core DI
+        OnboardingModule(),    // Onboarding features
+        AnalyticsModule(),     // Analytics features
+        fx.Invoke(startApp),
+    )
+    app.Run()
 }
 ```
 
@@ -539,7 +513,7 @@ func ConditionalModule() fx.Option {
 }
 ```
 
-### Lifecycle Hooks
+### Lifecycle Management
 
 ```go
 func LifecycleModule() fx.Option {
@@ -548,12 +522,10 @@ func LifecycleModule() fx.Option {
             lc.Append(fx.Hook{
                 OnStart: func(ctx context.Context) error {
                     logger.Info("Application starting")
-                    // Initialize resources
                     return nil
                 },
                 OnStop: func(ctx context.Context) error {
                     logger.Info("Application stopping")
-                    // Cleanup resources
                     return nil
                 },
             })
@@ -562,157 +534,74 @@ func LifecycleModule() fx.Option {
 }
 ```
 
-### Decorator Pattern
-
-```go
-func EnhancedModule() fx.Option {
-    return fx.Options(
-        fx.Decorate(func(logger *zap.Logger) *zap.Logger {
-            // Add additional fields to logger
-            return logger.With(
-                zap.String("service", "api-orchestration"),
-                zap.String("version", "2.0.0"),
-            )
-        }),
-        
-        fx.Decorate(func(httpClient httpsteps.HTTPClient) httpsteps.HTTPClient {
-            // Wrap HTTP client with additional functionality
-            return NewInstrumentedHTTPClient(httpClient)
-        }),
-    )
-}
-```
-
 ## Best Practices
 
-### Dependency Design
-1. **Use Interfaces**: Define interfaces for dependencies to enable easy testing and mocking
-2. **Constructor Injection**: Use constructor functions that accept dependencies as parameters
-3. **Avoid Globals**: Use DI instead of global variables
-4. **Single Responsibility**: Each provider should have a single responsibility
-5. **Error Handling**: Providers can return errors for validation
+### DI Design Principles
+1. **Application Isolation**: Each application should have its own DI configuration
+2. **Single Responsibility**: Each provider should have a single, clear purpose
+3. **Interface Usage**: Use interfaces for dependencies to enable easy testing
+4. **Named Providers**: Use `fx.Annotated` when providing multiple instances of the same type
+5. **Environment Awareness**: Configure providers based on environment needs
 
 ### Module Organization
-1. **Group Related Dependencies**: Organize related providers into modules
-2. **Layer Separation**: Separate infrastructure, domain, and application layers
-3. **Feature Modules**: Create modules for specific features or domains
-4. **Environment Modules**: Use different modules for different environments
-5. **Testing Modules**: Create specific modules for testing scenarios
+1. **Core Dependencies First**: Always provide config, logger, metrics first
+2. **Framework Components**: Provide framework components (registry, context, HTTP client)
+3. **Application Logic**: Provide transformers, validators, and business logic
+4. **Infrastructure Last**: Provide router and server last
 
 ### Performance Considerations
-1. **Lazy Initialization**: Use fx.Lazy for expensive dependencies
+1. **Lazy Initialization**: Use `fx.Lazy` for expensive dependencies
 2. **Singleton Pattern**: Most dependencies should be singletons
-3. **Avoid Circular Dependencies**: Design dependencies to avoid cycles
-4. **Resource Management**: Use lifecycle hooks for resource cleanup
-5. **Memory Usage**: Monitor memory usage with large dependency graphs
+3. **Resource Management**: Use lifecycle hooks for cleanup
+4. **Memory Efficiency**: Monitor memory usage with large dependency graphs
 
-## Integration with Framework Components
+## Migration Guide
 
-### Flow Integration
-```go
-// Flows automatically use injected dependencies
-func CreateUserFlow(
-    flowFactory *di.FlowFactory,
-    httpClient httpsteps.HTTPClient,
-    transformer transformers.Transformer,
-) *flow.Flow {
-    return flowFactory.CreateFlow("user_flow").
-        Step("fetch", httpsteps.GET("/api/users/{{userId}}")).
-        Step("transform", core.NewTransformStep("mobile", transformer))
-}
-```
+### From Centralized to Isolated DI
 
-### Step Integration
-```go
-// Steps can be created with injected dependencies
-func NewCustomStep(
-    httpClient httpsteps.HTTPClient,
-    logger *zap.Logger,
-) interfaces.Step {
-    return &CustomStep{
-        httpClient: httpClient,
-        logger:     logger,
-    }
-}
-```
+If you have an existing application using the old centralized DI:
 
-### Middleware Integration
-```go
-// Middleware can use injected dependencies
-func NewAuthMiddleware(
-    validator validators.Validator,
-    logger *zap.Logger,
-) gin.HandlerFunc {
-    return func(c *gin.Context) {
-        // Use injected validator and logger
-        token := c.GetHeader("Authorization")
-        if err := validator.Validate(map[string]interface{}{"token": token}); err != nil {
-            logger.Error("Authentication failed", zap.Error(err))
-            c.AbortWithStatus(401)
-            return
-        }
-        c.Next()
-    }
-}
-```
+1. **Create Local DI Directory**
+   ```bash
+   mkdir examples/your-app/di
+   ```
 
-## Troubleshooting
-
-### Common Issues
-
-1. **Circular Dependencies**
+2. **Copy and Customize DI Configuration**
    ```go
-   // Wrong: A depends on B, B depends on A
-   func ProvideA(b B) A { return NewA(b) }
-   func ProvideB(a A) B { return NewB(a) }
+   // Start with mobile-onboarding-v2 or mobile-bff as template
+   cp examples/mobile-onboarding-v2/di/di.go examples/your-app/di/
+   ```
+
+3. **Update Imports**
+   ```go
+   // Change from:
+   import "github.com/venkatvghub/api-orchestration-framework/pkg/di"
    
-   // Correct: Use interfaces or refactor dependencies
-   func ProvideA(b BInterface) A { return NewA(b) }
-   func ProvideB() B { return NewB() }
+   // To:
+   import "github.com/venkatvghub/api-orchestration-framework/examples/your-app/di"
    ```
 
-2. **Missing Dependencies**
-   ```go
-   // Ensure all required dependencies are provided
-   fx.New(
-       di.Module(),
-       fx.Provide(
-           NewMyService, // Make sure all dependencies of MyService are available
-       ),
-   )
-   ```
+4. **Customize Providers**
+   - Update metrics namespace
+   - Customize transformers for your use case
+   - Add application-specific validators
+   - Configure HTTP client for your backend APIs
 
-3. **Type Conflicts**
-   ```go
-   // Use fx.Annotated for multiple instances of same type
-   fx.Provide(
-       fx.Annotated{
-           Name:   "primary",
-           Target: NewPrimaryDatabase,
-       },
-       fx.Annotated{
-           Name:   "secondary", 
-           Target: NewSecondaryDatabase,
-       },
-   )
-   ```
-
-### Debugging
-
-1. **Enable Debug Logging**: Use fx.WithLogger for detailed DI logs
-2. **Dependency Visualization**: Use fx.Visualize to see dependency graph
-3. **Startup Errors**: Check fx.New errors for missing dependencies
-4. **Lifecycle Issues**: Monitor fx.Hook execution for startup/shutdown problems
+5. **Test Thoroughly**
+   - Ensure all dependencies resolve correctly
+   - Test application startup and shutdown
+   - Verify functionality with new DI configuration
 
 ## Examples
 
-See the complete examples in `pkg/di/examples.go` for:
-- Flow orchestration with DI
-- Data transformation services
-- Validation services  
-- HTTP client services
-- Custom step registration
-- Complete demo application
+### Complete Mobile Onboarding DI
+See: `examples/mobile-onboarding-v2/di/di.go`
+
+### Complete Mobile BFF DI  
+See: `examples/mobile-bff/di/di.go`
+
+### Creating Custom Application DI
+See the Quick Start section above for step-by-step instructions.
 
 ## Related Documentation
 

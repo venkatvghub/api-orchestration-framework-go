@@ -1,0 +1,40 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPath": "/api/analytics/events",
+    "headers": {
+      "Content-Type": {
+        "equalTo": "application/json"
+      },
+      "X-API-Version": {
+        "equalTo": "2.0"
+      }
+    },
+    "queryParameters": {
+      "user_id": {
+        "matches": ".*"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "success": true,
+      "data": {
+        "events": [
+          {
+            "event_type": "screen_view",
+            "user_id": "{{request.query.user_id}}",
+            "screen_id": "welcome",
+            "timestamp": "2024-01-15T10:30:00Z"
+          }
+        ],
+        "total_events": 15,
+        "time_range": "{{request.query.time_range}}"
+      }
+    }
+  }
+} 

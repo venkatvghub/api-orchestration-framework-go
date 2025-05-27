@@ -1,0 +1,27 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/api/screens/([a-zA-Z_]+)/submit",
+    "headers": {
+      "Content-Type": {
+        "equalTo": "application/json"
+      },
+      "X-API-Version": {
+        "equalTo": "2.0"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "success": true,
+      "data": {
+        "next_screen": "{{#eq request.pathSegments.[2] 'welcome'}}personal_info{{/eq}}{{#eq request.pathSegments.[2] 'personal_info'}}preferences{{/eq}}{{#eq request.pathSegments.[2] 'preferences'}}verification{{/eq}}{{#eq request.pathSegments.[2] 'verification'}}completion{{/eq}}{{#eq request.pathSegments.[2] 'completion'}}null{{/eq}}",
+        "message": "{{#eq request.pathSegments.[2] 'welcome'}}Welcome! Let's continue with your personal information.{{/eq}}{{#eq request.pathSegments.[2] 'personal_info'}}Great! Now let's set up your preferences.{{/eq}}{{#eq request.pathSegments.[2] 'preferences'}}Perfect! Now let's verify your email address.{{/eq}}{{#eq request.pathSegments.[2] 'verification'}}Email verified successfully!{{/eq}}{{#eq request.pathSegments.[2] 'completion'}}Onboarding completed successfully!{{/eq}}"
+      }
+    }
+  }
+} 

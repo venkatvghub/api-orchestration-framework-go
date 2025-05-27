@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/fx"
@@ -19,7 +20,7 @@ import (
 	"github.com/venkatvghub/api-orchestration-framework/pkg/validators"
 )
 
-// Module returns an fx.Option that provides all framework dependencies
+// Module returns an fx.Option that provides all framework dependencies for mobile onboarding
 func Module() fx.Option {
 	return fx.Options(
 		fx.Provide(
@@ -34,14 +35,18 @@ func Module() fx.Option {
 			provideHTTPClient,
 			provideFlowFactory,
 
-			// Transformers
-			provideFieldTransformer,
+			// Transformers - mobile-optimized for onboarding
 			provideMobileTransformer,
-			provideFlattenTransformer,
 
-			// Validators
-			provideRequiredFieldsValidator,
-			provideEmailValidator,
+			// Validators - named providers to avoid conflicts
+			fx.Annotated{
+				Name:   "required_fields",
+				Target: provideRequiredFieldsValidator,
+			},
+			fx.Annotated{
+				Name:   "email",
+				Target: provideEmailValidator,
+			},
 
 			// Infrastructure
 			provideRouter,
@@ -65,21 +70,21 @@ func provideLogger(cfg *config.FrameworkConfig) (*zap.Logger, error) {
 	return zap.NewDevelopment()
 }
 
-// provideMetrics creates and sets up the metrics collector
+// provideMetrics creates and sets up the metrics collector for mobile onboarding
 func provideMetrics() metrics.MetricsCollector {
-	metricsCollector := metrics.NewPrometheusMetrics("mobile_bff", "onboarding")
+	metricsCollector := metrics.NewPrometheusMetrics("mobile_onboarding", "v2")
 	metrics.SetGlobalMetrics(metricsCollector)
 	return metricsCollector
 }
 
 // Framework Components
 
-// provideStepRegistry creates a step registry with common steps
+// provideStepRegistry creates a step registry with onboarding-specific steps
 func provideStepRegistry(logger *zap.Logger) *registry.StepRegistry {
 	stepRegistry := registry.NewStepRegistry()
 
-	// Register common steps
-	logger.Info("Registering common steps in step registry")
+	// Register onboarding-specific steps
+	logger.Info("Registering mobile onboarding steps in step registry")
 
 	return stepRegistry
 }
@@ -91,21 +96,51 @@ func provideFlowContext(cfg *config.FrameworkConfig, logger *zap.Logger) interfa
 	return ctx
 }
 
-// provideHTTPClient creates a resilient HTTP client
-func provideHTTPClient(cfg *config.FrameworkConfig) httpsteps.HTTPClient {
+// provideHTTPClient creates a resilient HTTP client for mock API calls
+func provideHTTPClient(config *config.FrameworkConfig) httpsteps.HTTPClient {
+	// Create custom HTTP client config with increased timeouts
 	clientConfig := &httpsteps.ClientConfig{
-		BaseTimeout:         cfg.Timeouts.HTTPRequest,
-		MaxIdleConns:        cfg.HTTP.MaxIdleConns,
-		MaxIdleConnsPerHost: cfg.HTTP.MaxIdleConnsPerHost,
-		IdleConnTimeout:     cfg.HTTP.IdleConnTimeout,
-		MaxRetries:          cfg.HTTP.MaxRetries,
-		InitialRetryDelay:   cfg.HTTP.RetryDelay,
-		MaxRetryDelay:       cfg.HTTP.MaxRetryDelay,
-		FailureThreshold:    cfg.HTTP.FailureThreshold,
-		SuccessThreshold:    cfg.HTTP.SuccessThreshold,
-		CircuitBreakerDelay: cfg.HTTP.CircuitBreakerDelay,
-		RequestTimeout:      cfg.Timeouts.HTTPRequest,
-		EnableFallback:      cfg.HTTP.EnableFallback,
+		// Base settings - increased timeouts
+		BaseTimeout:         120 * time.Second, // Increased from 30s to 120s
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     90 * time.Second,
+		DisableKeepAlives:   false,
+		DisableCompression:  false,
+
+		// Retry settings
+		MaxRetries:           3,
+		InitialRetryDelay:    1 * time.Second,
+		MaxRetryDelay:        10 * time.Second,
+		RetryMultiplier:      2.0,
+		RetryJitter:          true,
+		RetryableStatusCodes: []int{429, 502, 503, 504},
+
+		// Circuit breaker settings
+		FailureThreshold:    5,
+		SuccessThreshold:    3,
+		CircuitBreakerDelay: 5 * time.Second,
+		HalfOpenMaxCalls:    3,
+
+		// Timeout settings - increased timeouts
+		RequestTimeout:    60 * time.Second, // Increased from 15s to 60s
+		ConnectionTimeout: 10 * time.Second, // Increased from 5s to 10s
+		KeepAliveTimeout:  30 * time.Second,
+
+		// Fallback settings
+		EnableFallback:     true,
+		FallbackStatusCode: 503,
+		FallbackBody:       []byte(`{"error":"service_unavailable","message":"Service temporarily unavailable"}`),
+		FallbackHeaders:    map[string]string{"Content-Type": "application/json"},
+
+		// Rate limiting
+		EnableRateLimit:   false,
+		RequestsPerSecond: 100,
+		BurstSize:         10,
+
+		// Metrics
+		EnableMetrics: true,
+		MetricsPrefix: "http_client",
 	}
 
 	return httpsteps.NewResilientHTTPClient(clientConfig)
@@ -113,37 +148,26 @@ func provideHTTPClient(cfg *config.FrameworkConfig) httpsteps.HTTPClient {
 
 // Transformers
 
-// provideFieldTransformer creates a field transformer
-func provideFieldTransformer() transformers.Transformer {
-	return transformers.NewFieldTransformer("default_field_transformer",
-		[]string{"id", "name", "status", "timestamp"})
-}
-
-// provideMobileTransformer creates a mobile-optimized transformer
+// provideMobileTransformer creates a mobile-optimized transformer for onboarding screens
 func provideMobileTransformer() transformers.Transformer {
-	return transformers.NewMobileTransformer([]string{"id", "name", "avatar", "status"})
-}
-
-// provideFlattenTransformer creates a flatten transformer
-func provideFlattenTransformer() transformers.Transformer {
-	return transformers.NewFlattenTransformer("default_flatten", "mobile")
+	return transformers.NewMobileTransformer([]string{"id", "title", "description", "type", "fields", "actions", "next_screen"})
 }
 
 // Validators
 
-// provideRequiredFieldsValidator creates a required fields validator
+// provideRequiredFieldsValidator creates a required fields validator for onboarding data
 func provideRequiredFieldsValidator() validators.Validator {
-	return validators.NewRequiredFieldsValidator("id", "name")
+	return validators.NewRequiredFieldsValidator("user_id", "screen_id")
 }
 
-// provideEmailValidator creates an email validator
+// provideEmailValidator creates an email validator for user registration
 func provideEmailValidator() validators.Validator {
 	return validators.EmailRequiredValidator("email")
 }
 
 // Infrastructure
 
-// provideRouter creates a basic Gin router
+// provideRouter creates a Gin router for the mobile onboarding BFF
 func provideRouter(cfg *config.FrameworkConfig) *gin.Engine {
 	if cfg.Logging.Level == "debug" {
 		gin.SetMode(gin.DebugMode)
@@ -154,7 +178,7 @@ func provideRouter(cfg *config.FrameworkConfig) *gin.Engine {
 	return gin.New()
 }
 
-// provideServer creates the HTTP server
+// provideServer creates the HTTP server for mobile onboarding
 func provideServer(cfg *config.FrameworkConfig, router *gin.Engine) *http.Server {
 	return &http.Server{
 		Addr:         fmt.Sprintf(":%d", getPort()),
@@ -185,7 +209,7 @@ func parseInt(s string, defaultValue int) int {
 
 // Factory functions for creating instances with DI
 
-// FlowFactory creates flows with injected dependencies
+// FlowFactory creates flows with injected dependencies for mobile onboarding
 type FlowFactory struct {
 	Config   *config.FrameworkConfig
 	Logger   *zap.Logger

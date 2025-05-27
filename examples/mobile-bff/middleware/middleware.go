@@ -23,6 +23,8 @@ func LoggingMiddleware(logger *zap.Logger) gin.HandlerFunc {
 			zap.String("client_ip", param.ClientIP),
 			zap.String("user_agent", param.Request.UserAgent()),
 			zap.Int("body_size", param.BodySize),
+			zap.String("device_type", param.Request.Header.Get("X-Device-Type")),
+			zap.String("app_version", param.Request.Header.Get("X-App-Version")),
 		)
 		return ""
 	})
@@ -48,10 +50,12 @@ func MetricsMiddleware() gin.HandlerFunc {
 
 		// Record custom BFF metrics
 		tags := map[string]string{
-			"method":   c.Request.Method,
-			"endpoint": c.FullPath(),
-			"status":   strconv.Itoa(statusCode),
-			"version":  getAPIVersion(c),
+			"method":      c.Request.Method,
+			"endpoint":    c.FullPath(),
+			"status":      strconv.Itoa(statusCode),
+			"device_type": c.GetHeader("X-Device-Type"),
+			"app_version": c.GetHeader("X-App-Version"),
+			"service":     "mobile-bff",
 		}
 
 		metrics.IncrementCounter("bff_requests_total", tags)
@@ -59,6 +63,22 @@ func MetricsMiddleware() gin.HandlerFunc {
 
 		if statusCode >= 400 {
 			metrics.IncrementCounter("bff_errors_total", tags)
+		}
+
+		// Record onboarding-specific metrics
+		if c.FullPath() != "" && len(c.FullPath()) > 0 {
+			if c.FullPath() == "/api/v1/onboarding/screens/:screenId" {
+				screenId := c.Param("screenId")
+				if screenId != "" {
+					screenTags := map[string]string{
+						"screen_id":   screenId,
+						"device_type": c.GetHeader("X-Device-Type"),
+						"method":      c.Request.Method,
+						"status":      strconv.Itoa(statusCode),
+					}
+					metrics.IncrementCounter("onboarding_screen_requests_total", screenTags)
+				}
+			}
 		}
 	}
 }
@@ -68,7 +88,7 @@ func CORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-API-Version, X-Device-Type, X-App-Version")
+		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Device-Type, X-App-Version, X-Platform, X-OS-Version")
 		c.Header("Access-Control-Expose-Headers", "Content-Length")
 		c.Header("Access-Control-Allow-Credentials", "true")
 
@@ -88,8 +108,13 @@ func RateLimitMiddleware(cfg config.RateLimitConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !limiter.Allow() {
 			c.JSON(429, gin.H{
-				"error":       "Rate limit exceeded",
+				"success": false,
+				"error": gin.H{
+					"code":    "RATE_LIMIT_EXCEEDED",
+					"message": "Rate limit exceeded. Please try again later.",
+				},
 				"retry_after": cfg.WindowSize.Seconds(),
+				"timestamp":   time.Now(),
 			})
 			c.Abort()
 			return
@@ -104,6 +129,7 @@ func DeviceInfoMiddleware() gin.HandlerFunc {
 		deviceType := c.GetHeader("X-Device-Type")
 		appVersion := c.GetHeader("X-App-Version")
 		platform := c.GetHeader("X-Platform")
+		osVersion := c.GetHeader("X-OS-Version")
 
 		if deviceType == "" {
 			deviceType = "unknown"
@@ -118,59 +144,68 @@ func DeviceInfoMiddleware() gin.HandlerFunc {
 		c.Set("device_type", deviceType)
 		c.Set("app_version", appVersion)
 		c.Set("platform", platform)
+		c.Set("os_version", osVersion)
 
 		c.Next()
 	}
 }
 
-// VersionMiddleware extracts API version from headers or path
-func VersionMiddleware() gin.HandlerFunc {
+// RequestIDMiddleware adds a unique request ID to each request
+func RequestIDMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		version := c.GetHeader("X-API-Version")
-		if version == "" {
-			// Extract from path
-			version = getAPIVersion(c)
+		requestID := c.GetHeader("X-Request-ID")
+		if requestID == "" {
+			requestID = generateRequestID()
 		}
 
-		c.Set("api_version", version)
+		c.Set("request_id", requestID)
+		c.Header("X-Request-ID", requestID)
+
 		c.Next()
 	}
 }
 
-// AuthMiddleware validates authentication tokens
-func AuthMiddleware() gin.HandlerFunc {
+// ValidationMiddleware validates common request parameters
+func ValidationMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		token := c.GetHeader("Authorization")
-		if token == "" {
-			c.JSON(401, gin.H{
-				"error": "Missing authorization header",
-			})
-			c.Abort()
-			return
+		// Validate user_id parameter for onboarding endpoints
+		if c.FullPath() != "" && len(c.FullPath()) > 0 {
+			if c.FullPath() == "/api/v1/onboarding/screens/:screenId" && c.Request.Method == "GET" {
+				userID := c.Query("user_id")
+				if userID == "" {
+					c.JSON(400, gin.H{
+						"success": false,
+						"error": gin.H{
+							"code":    "MISSING_USER_ID",
+							"message": "user_id parameter is required",
+						},
+						"timestamp": time.Now(),
+					})
+					c.Abort()
+					return
+				}
+				c.Set("user_id", userID)
+			}
 		}
 
-		// Simple token validation (in production, use proper JWT validation)
-		if len(token) < 10 {
-			c.JSON(401, gin.H{
-				"error": "Invalid token",
-			})
-			c.Abort()
-			return
-		}
-
-		c.Set("user_token", token)
 		c.Next()
 	}
 }
 
-// getAPIVersion extracts API version from the request path
-func getAPIVersion(c *gin.Context) string {
-	path := c.FullPath()
-	if len(path) > 7 && path[:7] == "/api/v1" {
-		return "v1"
+// SecurityHeadersMiddleware adds security headers
+func SecurityHeadersMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "DENY")
+		c.Header("X-XSS-Protection", "1; mode=block")
+		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+		c.Header("Content-Security-Policy", "default-src 'self'")
+
+		c.Next()
 	}
-	if len(path) > 7 && path[:7] == "/api/v2" {
-		return "v2"
-	}
-	return "unknown"
+}
+
+// generateRequestID generates a unique request ID
+func generateRequestID() string {
+	return strconv.FormatInt(time.Now().UnixNano(), 36)
 }

@@ -1,0 +1,33 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPathPattern": "/api/screens/([a-zA-Z_]+)",
+    "headers": {
+      "Content-Type": {
+        "equalTo": "application/json"
+      },
+      "X-API-Version": {
+        "equalTo": "2.0"
+      }
+    },
+    "queryParameters": {
+      "user_id": {
+        "matches": ".*"
+      }
+    }
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "success": true,
+      "data": {
+        "title": "{{#eq request.pathSegments.[2] 'welcome'}}Welcome to Our App!{{/eq}}{{#eq request.pathSegments.[2] 'personal_info'}}Tell us about yourself{{/eq}}{{#eq request.pathSegments.[2] 'preferences'}}Customize your experience{{/eq}}{{#eq request.pathSegments.[2] 'verification'}}Verify your email{{/eq}}{{#eq request.pathSegments.[2] 'completion'}}You're all set!{{/eq}}",
+        "description": "{{#eq request.pathSegments.[2] 'welcome'}}Let's get you started with a quick setup{{/eq}}{{#eq request.pathSegments.[2] 'personal_info'}}We need some basic information to personalize your experience{{/eq}}{{#eq request.pathSegments.[2] 'preferences'}}Choose your preferences to get the most out of our app{{/eq}}{{#eq request.pathSegments.[2] 'verification'}}We've sent a verification code to your email{{/eq}}{{#eq request.pathSegments.[2] 'completion'}}Welcome to our community. Let's start exploring!{{/eq}}",
+        "type": "{{request.pathSegments.[2]}}"
+      }
+    }
+  }
+} 

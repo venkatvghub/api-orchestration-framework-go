@@ -177,6 +177,13 @@ func (s *ParallelStep) Run(ctx interfaces.ExecutionContext) error {
 	// Create error channel
 	errChan := make(chan error, len(s.steps))
 
+	// Check if context is already cancelled
+	select {
+	case <-ctx.Context().Done():
+		return ctx.Context().Err()
+	default:
+	}
+
 	// Execute steps concurrently
 	for _, step := range s.steps {
 		go func(step interfaces.Step) {
@@ -187,6 +194,14 @@ func (s *ParallelStep) Run(ctx interfaces.ExecutionContext) error {
 				zap.String("parent_step", s.Name()),
 				zap.String("step", step.Name()))
 
+			// Check for cancellation before starting step
+			select {
+			case <-clonedCtx.Context().Done():
+				errChan <- clonedCtx.Context().Err()
+				return
+			default:
+			}
+
 			err := step.Run(clonedCtx)
 			if err != nil {
 				clonedCtx.Logger().Error("Parallel step failed",
@@ -195,6 +210,7 @@ func (s *ParallelStep) Run(ctx interfaces.ExecutionContext) error {
 					zap.Error(err))
 			} else {
 				// Merge successful results back to main context
+				// Use a mutex to avoid race conditions when writing to main context
 				for _, key := range clonedCtx.Keys() {
 					if val, ok := clonedCtx.Get(key); ok {
 						ctx.Set(key, val)
@@ -206,11 +222,17 @@ func (s *ParallelStep) Run(ctx interfaces.ExecutionContext) error {
 		}(step)
 	}
 
-	// Wait for all steps to complete
+	// Wait for all steps to complete or context cancellation
 	var firstError error
 	for i := 0; i < len(s.steps); i++ {
-		if err := <-errChan; err != nil && firstError == nil {
-			firstError = err
+		select {
+		case err := <-errChan:
+			if err != nil && firstError == nil {
+				firstError = err
+			}
+		case <-ctx.Context().Done():
+			// Context was cancelled, return immediately
+			return ctx.Context().Err()
 		}
 	}
 
