@@ -24,7 +24,6 @@ import (
 type OnboardingHandler struct {
 	config           *frameworkConfig.FrameworkConfig
 	logger           *zap.Logger
-	mockAPIService   *services.MockAPIService
 	cacheService     *services.CacheService
 	analyticsService *services.AnalyticsService
 	mockAPIBaseURL   string
@@ -37,7 +36,6 @@ func NewOnboardingHandler(cfg *frameworkConfig.FrameworkConfig, logger *zap.Logg
 	return &OnboardingHandler{
 		config:           cfg,
 		logger:           logger,
-		mockAPIService:   services.NewMockAPIService(cfg, logger),
 		cacheService:     services.NewCacheService(cfg, logger),
 		analyticsService: services.NewAnalyticsService(cfg, logger),
 		mockAPIBaseURL:   mockAPIConfig.BaseURL,
@@ -500,16 +498,6 @@ func (h *OnboardingHandler) TrackEvent(c *gin.Context) {
 
 // Helper methods for creating flow steps
 
-func (h *OnboardingHandler) createCacheCheckStep(screenID, deviceType string) interfaces.Step {
-	return flow.StepFunc(func(ctx interfaces.ExecutionContext) error {
-		cacheKey := h.cacheService.GetScreenCacheKey(screenID, deviceType)
-		if cachedData, exists := h.cacheService.Get(cacheKey); exists {
-			ctx.Set("cached_screen", cachedData)
-		}
-		return nil
-	})
-}
-
 func (h *OnboardingHandler) createMockAPIScreenStep() *httpsteps.HTTPStep {
 	return httpsteps.GET(h.mockAPIBaseURL+"/api/screens/${screen_id}").
 		WithQueryParam("user_id", "${user_id}").
@@ -526,45 +514,6 @@ func (h *OnboardingHandler) createMockAPIProgressStep() *httpsteps.HTTPStep {
 		WithHeader("X-API-Version", "2.0").
 		WithTimeout(60 * time.Second).
 		SaveAs("user_progress")
-}
-
-func (h *OnboardingHandler) createMergeScreenDataStep() interfaces.Step {
-	return flow.StepFunc(func(ctx interfaces.ExecutionContext) error {
-		screenResponse, _ := ctx.GetMap("mock_api_screen")
-		progressResponse, _ := ctx.GetMap("user_progress")
-
-		// Extract data from WireMock response structure
-		var screenData map[string]interface{}
-		if screenResponse != nil {
-			if data, ok := screenResponse["data"].(map[string]interface{}); ok {
-				screenData = data
-			} else {
-				screenData = screenResponse // fallback if no data field
-			}
-		}
-
-		var progressData map[string]interface{}
-		if progressResponse != nil {
-			if data, ok := progressResponse["data"].(map[string]interface{}); ok {
-				progressData = data
-			} else {
-				progressData = progressResponse // fallback if no data field
-			}
-		}
-
-		// Merge screen and progress data
-		mergedData := make(map[string]interface{})
-		for k, v := range screenData {
-			mergedData[k] = v
-		}
-
-		if progressData != nil {
-			mergedData["user_progress"] = progressData
-		}
-
-		ctx.Set("screen_data", mergedData)
-		return nil
-	})
 }
 
 func (h *OnboardingHandler) createCacheStoreStep(screenID, deviceType string) interfaces.Step {
