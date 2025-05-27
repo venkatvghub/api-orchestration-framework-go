@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/venkatvghub/api-orchestration-framework/pkg/interfaces"
 	"go.uber.org/zap"
 )
 
@@ -70,8 +71,8 @@ func TestFlow_Use(t *testing.T) {
 	flow := NewFlow("test_flow")
 	middlewareCalled := false
 
-	middleware := func(next func(*Context) error) func(*Context) error {
-		return func(ctx *Context) error {
+	middleware := func(next func(interfaces.ExecutionContext) error) func(interfaces.ExecutionContext) error {
+		return func(ctx interfaces.ExecutionContext) error {
 			middlewareCalled = true
 			return next(ctx)
 		}
@@ -120,7 +121,7 @@ func TestFlow_Step(t *testing.T) {
 
 func TestFlow_Step_AnonymousStep(t *testing.T) {
 	flow := NewFlow("test_flow")
-	step := StepFunc(func(ctx *Context) error { return nil })
+	step := StepFunc(func(ctx interfaces.ExecutionContext) error { return nil })
 
 	result := flow.Step("custom_name", step)
 
@@ -142,7 +143,7 @@ func TestFlow_StepFunc(t *testing.T) {
 	flow := NewFlow("test_flow")
 	executed := false
 
-	stepFunc := func(ctx *Context) error {
+	stepFunc := func(ctx interfaces.ExecutionContext) error {
 		executed = true
 		ctx.Set("step_executed", true)
 		return nil
@@ -182,7 +183,7 @@ func TestFlow_StepFunc(t *testing.T) {
 func TestFlow_Transform(t *testing.T) {
 	flow := NewFlow("test_flow")
 
-	transformer := func(ctx *Context) error {
+	transformer := func(ctx interfaces.ExecutionContext) error {
 		val, _ := ctx.GetString("input")
 		ctx.Set("output", "transformed_"+val)
 		return nil
@@ -286,13 +287,13 @@ func TestFlow_Execute(t *testing.T) {
 	step1Executed := false
 	step2Executed := false
 
-	flow.StepFunc("step1", func(ctx *Context) error {
+	flow.StepFunc("step1", func(ctx interfaces.ExecutionContext) error {
 		step1Executed = true
 		ctx.Set("step1_result", "done")
 		return nil
 	})
 
-	flow.StepFunc("step2", func(ctx *Context) error {
+	flow.StepFunc("step2", func(ctx interfaces.ExecutionContext) error {
 		step2Executed = true
 		ctx.Set("step2_result", "done")
 		return nil
@@ -337,15 +338,15 @@ func TestFlow_Execute_WithError(t *testing.T) {
 	flow := NewFlow("test_flow")
 	expectedError := errors.New("step error")
 
-	flow.StepFunc("step1", func(ctx *Context) error {
+	flow.StepFunc("step1", func(ctx interfaces.ExecutionContext) error {
 		return nil
 	})
 
-	flow.StepFunc("step2", func(ctx *Context) error {
+	flow.StepFunc("step2", func(ctx interfaces.ExecutionContext) error {
 		return expectedError
 	})
 
-	flow.StepFunc("step3", func(ctx *Context) error {
+	flow.StepFunc("step3", func(ctx interfaces.ExecutionContext) error {
 		t.Error("Step3 should not be executed after step2 fails")
 		return nil
 	})
@@ -402,22 +403,22 @@ func TestChoiceBuilder(t *testing.T) {
 	executed := ""
 
 	choice := flow.Choice("test_choice").
-		When(func(ctx *Context) bool {
+		When(func(ctx interfaces.ExecutionContext) bool {
 			return ctx.Has("condition1")
 		}).
-		StepFunc("branch1", func(ctx *Context) error {
+		StepFunc("branch1", func(ctx interfaces.ExecutionContext) error {
 			executed = "branch1"
 			return nil
 		}).
-		When(func(ctx *Context) bool {
+		When(func(ctx interfaces.ExecutionContext) bool {
 			return ctx.Has("condition2")
 		}).
-		StepFunc("branch2", func(ctx *Context) error {
+		StepFunc("branch2", func(ctx interfaces.ExecutionContext) error {
 			executed = "branch2"
 			return nil
 		}).
 		Otherwise().
-		StepFunc("default", func(ctx *Context) error {
+		StepFunc("default", func(ctx interfaces.ExecutionContext) error {
 			executed = "default"
 			return nil
 		}).
@@ -477,10 +478,10 @@ func TestChoiceBuilder_NoOtherwise(t *testing.T) {
 	executed := false
 
 	flow.Choice("test_choice").
-		When(func(ctx *Context) bool {
+		When(func(ctx interfaces.ExecutionContext) bool {
 			return ctx.Has("condition1")
 		}).
-		StepFunc("branch1", func(ctx *Context) error {
+		StepFunc("branch1", func(ctx interfaces.ExecutionContext) error {
 			executed = true
 			return nil
 		}).
@@ -506,17 +507,17 @@ func TestParallelBuilder(t *testing.T) {
 	step3Executed := false
 
 	parallel := flow.Parallel("test_parallel").
-		StepFunc("step1", func(ctx *Context) error {
+		StepFunc("step1", func(ctx interfaces.ExecutionContext) error {
 			step1Executed = true
 			ctx.Set("step1", "done")
 			return nil
 		}).
-		StepFunc("step2", func(ctx *Context) error {
+		StepFunc("step2", func(ctx interfaces.ExecutionContext) error {
 			step2Executed = true
 			ctx.Set("step2", "done")
 			return nil
 		}).
-		StepFunc("step3", func(ctx *Context) error {
+		StepFunc("step3", func(ctx interfaces.ExecutionContext) error {
 			step3Executed = true
 			ctx.Set("step3", "done")
 			return nil
@@ -603,8 +604,8 @@ func TestMiddleware(t *testing.T) {
 	flow := NewFlow("test_flow")
 	middlewareOrder := []string{}
 
-	middleware1 := func(next func(*Context) error) func(*Context) error {
-		return func(ctx *Context) error {
+	middleware1 := func(next func(interfaces.ExecutionContext) error) func(interfaces.ExecutionContext) error {
+		return func(ctx interfaces.ExecutionContext) error {
 			middlewareOrder = append(middlewareOrder, "middleware1_before")
 			err := next(ctx)
 			middlewareOrder = append(middlewareOrder, "middleware1_after")
@@ -612,8 +613,8 @@ func TestMiddleware(t *testing.T) {
 		}
 	}
 
-	middleware2 := func(next func(*Context) error) func(*Context) error {
-		return func(ctx *Context) error {
+	middleware2 := func(next func(interfaces.ExecutionContext) error) func(interfaces.ExecutionContext) error {
+		return func(ctx interfaces.ExecutionContext) error {
 			middlewareOrder = append(middlewareOrder, "middleware2_before")
 			err := next(ctx)
 			middlewareOrder = append(middlewareOrder, "middleware2_after")
@@ -623,7 +624,7 @@ func TestMiddleware(t *testing.T) {
 
 	flow.Use(middleware1).Use(middleware2)
 
-	flow.StepFunc("test_step", func(ctx *Context) error {
+	flow.StepFunc("test_step", func(ctx interfaces.ExecutionContext) error {
 		middlewareOrder = append(middlewareOrder, "step_executed")
 		return nil
 	})
@@ -656,18 +657,18 @@ func TestMiddleware(t *testing.T) {
 func TestChoiceStep_Run(t *testing.T) {
 	branches := []conditionalBranch{
 		{
-			condition: func(ctx *Context) bool { return ctx.Has("condition1") },
-			steps: []Step{
-				StepFunc(func(ctx *Context) error {
+			condition: func(ctx interfaces.ExecutionContext) bool { return ctx.Has("condition1") },
+			steps: []interfaces.Step{
+				StepFunc(func(ctx interfaces.ExecutionContext) error {
 					ctx.Set("executed", "branch1")
 					return nil
 				}),
 			},
 		},
 		{
-			condition: func(ctx *Context) bool { return ctx.Has("condition2") },
-			steps: []Step{
-				StepFunc(func(ctx *Context) error {
+			condition: func(ctx interfaces.ExecutionContext) bool { return ctx.Has("condition2") },
+			steps: []interfaces.Step{
+				StepFunc(func(ctx interfaces.ExecutionContext) error {
 					ctx.Set("executed", "branch2")
 					return nil
 				}),
@@ -675,7 +676,7 @@ func TestChoiceStep_Run(t *testing.T) {
 		},
 	}
 
-	otherwiseStep := StepFunc(func(ctx *Context) error {
+	otherwiseStep := StepFunc(func(ctx interfaces.ExecutionContext) error {
 		ctx.Set("executed", "otherwise")
 		return nil
 	})

@@ -14,7 +14,7 @@ import (
 // This is kept for backward compatibility, but new steps should implement interfaces.Step
 type Step interface {
 	// Run executes the step with the given context
-	Run(ctx *Context) error
+	Run(ctx interfaces.ExecutionContext) error
 
 	// Name returns the step name for logging and metrics
 	Name() string
@@ -23,12 +23,41 @@ type Step interface {
 	Description() string
 }
 
-// StepWrapper wraps the new interface.Step to work with legacy Context
+// LegacyStepWrapper wraps the old flow.Step to work with new ExecutionContext
+type LegacyStepWrapper struct {
+	step Step
+}
+
+// NewLegacyStepWrapper creates a wrapper for old flow steps
+func NewLegacyStepWrapper(step Step) *LegacyStepWrapper {
+	return &LegacyStepWrapper{step: step}
+}
+
+func (w *LegacyStepWrapper) Run(ctx interfaces.ExecutionContext) error {
+	start := time.Now()
+	err := w.step.Run(ctx)
+	duration := time.Since(start)
+
+	// Record metrics
+	metrics.RecordStepExecution(w.step.Name(), duration, err == nil)
+
+	return err
+}
+
+func (w *LegacyStepWrapper) Name() string {
+	return w.step.Name()
+}
+
+func (w *LegacyStepWrapper) Description() string {
+	return w.step.Description()
+}
+
+// StepWrapper wraps interfaces.Step to work with *flow.Context
 type StepWrapper struct {
 	step interfaces.Step
 }
 
-// NewStepWrapper creates a wrapper for new interface steps
+// NewStepWrapper creates a wrapper for interfaces.Step to work with *flow.Context
 func NewStepWrapper(step interfaces.Step) *StepWrapper {
 	return &StepWrapper{step: step}
 }
@@ -52,10 +81,10 @@ func (w *StepWrapper) Description() string {
 	return w.step.Description()
 }
 
-// StepFunc is a function type that implements Step
-type StepFunc func(ctx *Context) error
+// StepFunc is a function type that implements interfaces.Step
+type StepFunc func(ctx interfaces.ExecutionContext) error
 
-func (f StepFunc) Run(ctx *Context) error {
+func (f StepFunc) Run(ctx interfaces.ExecutionContext) error {
 	return f(ctx)
 }
 
@@ -99,12 +128,12 @@ func (s *BaseStep) WithTimeout(timeout time.Duration) *BaseStep {
 // ConditionalStep represents a step that executes based on a condition
 type ConditionalStep struct {
 	*BaseStep
-	condition func(*Context) bool
-	step      Step
+	condition func(interfaces.ExecutionContext) bool
+	step      interfaces.Step
 }
 
 // NewConditionalStep creates a conditional step
-func NewConditionalStep(name string, condition func(*Context) bool, step Step) *ConditionalStep {
+func NewConditionalStep(name string, condition func(interfaces.ExecutionContext) bool, step interfaces.Step) *ConditionalStep {
 	return &ConditionalStep{
 		BaseStep:  NewBaseStep(name, fmt.Sprintf("Conditional: %s", step.Description())),
 		condition: condition,
@@ -112,7 +141,7 @@ func NewConditionalStep(name string, condition func(*Context) bool, step Step) *
 	}
 }
 
-func (s *ConditionalStep) Run(ctx *Context) error {
+func (s *ConditionalStep) Run(ctx interfaces.ExecutionContext) error {
 	if s.condition(ctx) {
 		ctx.Logger().Info("Condition met, executing step",
 			zap.String("step", s.Name()),
@@ -129,18 +158,18 @@ func (s *ConditionalStep) Run(ctx *Context) error {
 // ParallelStep executes multiple steps concurrently
 type ParallelStep struct {
 	*BaseStep
-	steps []Step
+	steps []interfaces.Step
 }
 
 // NewParallelStep creates a parallel step
-func NewParallelStep(name string, steps ...Step) *ParallelStep {
+func NewParallelStep(name string, steps ...interfaces.Step) *ParallelStep {
 	return &ParallelStep{
 		BaseStep: NewBaseStep(name, fmt.Sprintf("Parallel execution of %d steps", len(steps))),
 		steps:    steps,
 	}
 }
 
-func (s *ParallelStep) Run(ctx *Context) error {
+func (s *ParallelStep) Run(ctx interfaces.ExecutionContext) error {
 	if len(s.steps) == 0 {
 		return nil
 	}
@@ -150,35 +179,24 @@ func (s *ParallelStep) Run(ctx *Context) error {
 
 	// Execute steps concurrently
 	for _, step := range s.steps {
-		go func(step Step) {
+		go func(step interfaces.Step) {
 			// Clone context for each parallel step to avoid race conditions
 			clonedCtx := ctx.Clone()
-			stepCtx, ok := clonedCtx.(*Context)
-			if !ok {
-				// Fallback: create a new context with the same data
-				stepCtx = NewContext()
-				for _, key := range ctx.Keys() {
-					if val, exists := ctx.Get(key); exists {
-						stepCtx.Set(key, val)
-					}
-				}
-				stepCtx.WithFlowName(ctx.FlowName()).WithLogger(ctx.Logger())
-			}
 
-			stepCtx.Logger().Info("Starting parallel step",
+			clonedCtx.Logger().Info("Starting parallel step",
 				zap.String("parent_step", s.Name()),
 				zap.String("step", step.Name()))
 
-			err := step.Run(stepCtx)
+			err := step.Run(clonedCtx)
 			if err != nil {
-				stepCtx.Logger().Error("Parallel step failed",
+				clonedCtx.Logger().Error("Parallel step failed",
 					zap.String("parent_step", s.Name()),
 					zap.String("step", step.Name()),
 					zap.Error(err))
 			} else {
 				// Merge successful results back to main context
-				for _, key := range stepCtx.Keys() {
-					if val, ok := stepCtx.Get(key); ok {
+				for _, key := range clonedCtx.Keys() {
+					if val, ok := clonedCtx.Get(key); ok {
 						ctx.Set(key, val)
 					}
 				}
@@ -202,18 +220,18 @@ func (s *ParallelStep) Run(ctx *Context) error {
 // SequentialStep executes steps in sequence
 type SequentialStep struct {
 	*BaseStep
-	steps []Step
+	steps []interfaces.Step
 }
 
 // NewSequentialStep creates a sequential step
-func NewSequentialStep(name string, steps ...Step) *SequentialStep {
+func NewSequentialStep(name string, steps ...interfaces.Step) *SequentialStep {
 	return &SequentialStep{
 		BaseStep: NewBaseStep(name, fmt.Sprintf("Sequential execution of %d steps", len(steps))),
 		steps:    steps,
 	}
 }
 
-func (s *SequentialStep) Run(ctx *Context) error {
+func (s *SequentialStep) Run(ctx interfaces.ExecutionContext) error {
 	for _, step := range s.steps {
 		ctx.Logger().Info("Executing sequential step",
 			zap.String("parent_step", s.Name()),
@@ -233,18 +251,18 @@ func (s *SequentialStep) Run(ctx *Context) error {
 // TransformStep applies a transformation function to context data
 type TransformStep struct {
 	*BaseStep
-	transformer func(*Context) error
+	transformer func(interfaces.ExecutionContext) error
 }
 
 // NewTransformStep creates a transform step
-func NewTransformStep(name string, transformer func(*Context) error) *TransformStep {
+func NewTransformStep(name string, transformer func(interfaces.ExecutionContext) error) *TransformStep {
 	return &TransformStep{
 		BaseStep:    NewBaseStep(name, "Data transformation step"),
 		transformer: transformer,
 	}
 }
 
-func (s *TransformStep) Run(ctx *Context) error {
+func (s *TransformStep) Run(ctx interfaces.ExecutionContext) error {
 	ctx.Logger().Info("Executing transform step", zap.String("step", s.Name()))
 	return s.transformer(ctx)
 }
@@ -252,14 +270,14 @@ func (s *TransformStep) Run(ctx *Context) error {
 // RetryStep wraps another step with retry logic
 type RetryStep struct {
 	*BaseStep
-	step        Step
+	step        interfaces.Step
 	maxRetries  int
 	retryDelay  time.Duration
 	shouldRetry func(error) bool
 }
 
 // NewRetryStep creates a retry step
-func NewRetryStep(name string, step Step, maxRetries int, retryDelay time.Duration) *RetryStep {
+func NewRetryStep(name string, step interfaces.Step, maxRetries int, retryDelay time.Duration) *RetryStep {
 	return &RetryStep{
 		BaseStep:    NewBaseStep(name, fmt.Sprintf("Retry wrapper for: %s", step.Description())),
 		step:        step,
@@ -274,7 +292,7 @@ func (s *RetryStep) WithRetryCondition(shouldRetry func(error) bool) *RetryStep 
 	return s
 }
 
-func (s *RetryStep) Run(ctx *Context) error {
+func (s *RetryStep) Run(ctx interfaces.ExecutionContext) error {
 	var lastErr error
 
 	for attempt := 0; attempt <= s.maxRetries; attempt++ {
@@ -333,7 +351,7 @@ func NewDelayStep(name string, delay time.Duration) *DelayStep {
 	}
 }
 
-func (s *DelayStep) Run(ctx *Context) error {
+func (s *DelayStep) Run(ctx interfaces.ExecutionContext) error {
 	ctx.Logger().Info("Executing delay step",
 		zap.String("step", s.Name()),
 		zap.Duration("delay", s.delay))

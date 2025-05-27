@@ -13,14 +13,14 @@ import (
 	"github.com/venkatvghub/api-orchestration-framework/pkg/interfaces"
 )
 
-// Mock step for testing
+// Mock step for testing that implements interfaces.Step
 type mockStep struct {
 	name        string
 	description string
-	runFunc     func(*Context) error
+	runFunc     func(interfaces.ExecutionContext) error
 }
 
-func (m *mockStep) Run(ctx *Context) error {
+func (m *mockStep) Run(ctx interfaces.ExecutionContext) error {
 	if m.runFunc != nil {
 		return m.runFunc(ctx)
 	}
@@ -110,7 +110,7 @@ func TestStepWrapper_Error(t *testing.T) {
 
 func TestStepFunc(t *testing.T) {
 	executed := false
-	stepFunc := StepFunc(func(ctx *Context) error {
+	stepFunc := StepFunc(func(ctx interfaces.ExecutionContext) error {
 		executed = true
 		ctx.Set("func_key", "func_value")
 		return nil
@@ -142,7 +142,7 @@ func TestStepFunc(t *testing.T) {
 
 func TestStepFunc_Error(t *testing.T) {
 	expectedError := errors.New("function error")
-	stepFunc := StepFunc(func(ctx *Context) error {
+	stepFunc := StepFunc(func(ctx interfaces.ExecutionContext) error {
 		return expectedError
 	})
 
@@ -190,14 +190,14 @@ func TestConditionalStep(t *testing.T) {
 	mockStep := &mockStep{
 		name:        "conditional_inner",
 		description: "Inner step",
-		runFunc: func(ctx *Context) error {
+		runFunc: func(ctx interfaces.ExecutionContext) error {
 			executed = true
 			return nil
 		},
 	}
 
 	// Test condition that returns true
-	condition := func(ctx *Context) bool {
+	condition := func(ctx interfaces.ExecutionContext) bool {
 		return ctx.Has("execute")
 	}
 
@@ -241,7 +241,7 @@ func TestParallelStep(t *testing.T) {
 
 	step1 := &mockStep{
 		name: "step1",
-		runFunc: func(ctx *Context) error {
+		runFunc: func(ctx interfaces.ExecutionContext) error {
 			step1Executed = true
 			ctx.Set("step1", "done")
 			return nil
@@ -250,7 +250,7 @@ func TestParallelStep(t *testing.T) {
 
 	step2 := &mockStep{
 		name: "step2",
-		runFunc: func(ctx *Context) error {
+		runFunc: func(ctx interfaces.ExecutionContext) error {
 			step2Executed = true
 			ctx.Set("step2", "done")
 			return nil
@@ -259,7 +259,7 @@ func TestParallelStep(t *testing.T) {
 
 	step3 := &mockStep{
 		name: "step3",
-		runFunc: func(ctx *Context) error {
+		runFunc: func(ctx interfaces.ExecutionContext) error {
 			step3Executed = true
 			ctx.Set("step3", "done")
 			return nil
@@ -303,21 +303,21 @@ func TestParallelStep_Error(t *testing.T) {
 
 	step1 := &mockStep{
 		name: "step1",
-		runFunc: func(ctx *Context) error {
+		runFunc: func(ctx interfaces.ExecutionContext) error {
 			return nil
 		},
 	}
 
 	step2 := &mockStep{
 		name: "step2",
-		runFunc: func(ctx *Context) error {
+		runFunc: func(ctx interfaces.ExecutionContext) error {
 			return expectedError
 		},
 	}
 
 	step3 := &mockStep{
 		name: "step3",
-		runFunc: func(ctx *Context) error {
+		runFunc: func(ctx interfaces.ExecutionContext) error {
 			return nil
 		},
 	}
@@ -336,7 +336,7 @@ func TestSequentialStep(t *testing.T) {
 
 	step1 := &mockStep{
 		name: "step1",
-		runFunc: func(ctx *Context) error {
+		runFunc: func(ctx interfaces.ExecutionContext) error {
 			executionOrder = append(executionOrder, "step1")
 			ctx.Set("step1", "done")
 			return nil
@@ -345,7 +345,7 @@ func TestSequentialStep(t *testing.T) {
 
 	step2 := &mockStep{
 		name: "step2",
-		runFunc: func(ctx *Context) error {
+		runFunc: func(ctx interfaces.ExecutionContext) error {
 			executionOrder = append(executionOrder, "step2")
 			ctx.Set("step2", "done")
 			return nil
@@ -354,7 +354,7 @@ func TestSequentialStep(t *testing.T) {
 
 	step3 := &mockStep{
 		name: "step3",
-		runFunc: func(ctx *Context) error {
+		runFunc: func(ctx interfaces.ExecutionContext) error {
 			executionOrder = append(executionOrder, "step3")
 			ctx.Set("step3", "done")
 			return nil
@@ -396,7 +396,7 @@ func TestSequentialStep_Error(t *testing.T) {
 
 	step1 := &mockStep{
 		name: "step1",
-		runFunc: func(ctx *Context) error {
+		runFunc: func(ctx interfaces.ExecutionContext) error {
 			executionOrder = append(executionOrder, "step1")
 			return nil
 		},
@@ -404,7 +404,7 @@ func TestSequentialStep_Error(t *testing.T) {
 
 	step2 := &mockStep{
 		name: "step2",
-		runFunc: func(ctx *Context) error {
+		runFunc: func(ctx interfaces.ExecutionContext) error {
 			executionOrder = append(executionOrder, "step2")
 			return expectedError
 		},
@@ -412,7 +412,7 @@ func TestSequentialStep_Error(t *testing.T) {
 
 	step3 := &mockStep{
 		name: "step3",
-		runFunc: func(ctx *Context) error {
+		runFunc: func(ctx interfaces.ExecutionContext) error {
 			executionOrder = append(executionOrder, "step3")
 			return nil
 		},
@@ -440,7 +440,7 @@ func TestSequentialStep_Error(t *testing.T) {
 }
 
 func TestTransformStep(t *testing.T) {
-	transformer := func(ctx *Context) error {
+	transformer := func(ctx interfaces.ExecutionContext) error {
 		val, _ := ctx.GetString("input")
 		ctx.Set("output", "transformed_"+val)
 		return nil
@@ -476,7 +476,7 @@ func TestTransformStep(t *testing.T) {
 
 func TestTransformStep_Error(t *testing.T) {
 	expectedError := errors.New("transform error")
-	transformer := func(ctx *Context) error {
+	transformer := func(ctx interfaces.ExecutionContext) error {
 		return expectedError
 	}
 
@@ -493,7 +493,7 @@ func TestRetryStep(t *testing.T) {
 	attempts := 0
 	mockStep := &mockStep{
 		name: "retry_inner",
-		runFunc: func(ctx *Context) error {
+		runFunc: func(ctx interfaces.ExecutionContext) error {
 			attempts++
 			if attempts < 3 {
 				return errors.New("temporary error")
@@ -529,7 +529,7 @@ func TestRetryStep_MaxRetriesExceeded(t *testing.T) {
 	attempts := 0
 	mockStep := &mockStep{
 		name: "retry_inner",
-		runFunc: func(ctx *Context) error {
+		runFunc: func(ctx interfaces.ExecutionContext) error {
 			attempts++
 			return errors.New("persistent error")
 		},
@@ -554,7 +554,7 @@ func TestRetryStep_WithRetryCondition(t *testing.T) {
 
 	mockStep := &mockStep{
 		name: "retry_inner",
-		runFunc: func(ctx *Context) error {
+		runFunc: func(ctx interfaces.ExecutionContext) error {
 			attempts++
 			return nonRetryableError
 		},

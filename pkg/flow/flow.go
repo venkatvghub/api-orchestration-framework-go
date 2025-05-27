@@ -5,13 +5,15 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+
+	"github.com/venkatvghub/api-orchestration-framework/pkg/interfaces"
 )
 
 // Flow represents an orchestration flow with a fluent DSL
 type Flow struct {
 	name        string
 	description string
-	steps       []Step
+	steps       []interfaces.Step
 	middleware  []Middleware
 	timeout     time.Duration
 }
@@ -21,7 +23,7 @@ func NewFlow(name string) *Flow {
 	return &Flow{
 		name:        name,
 		description: fmt.Sprintf("Flow: %s", name),
-		steps:       make([]Step, 0),
+		steps:       make([]interfaces.Step, 0),
 		middleware:  make([]Middleware, 0),
 		timeout:     30 * time.Second,
 	}
@@ -46,7 +48,7 @@ func (f *Flow) Use(middleware Middleware) *Flow {
 }
 
 // Step adds a step to the flow
-func (f *Flow) Step(name string, step Step) *Flow {
+func (f *Flow) Step(name string, step interfaces.Step) *Flow {
 	// Wrap step with name if it's anonymous
 	if step.Name() == "anonymous" {
 		step = &namedStep{
@@ -59,7 +61,7 @@ func (f *Flow) Step(name string, step Step) *Flow {
 }
 
 // StepFunc adds a function as a step
-func (f *Flow) StepFunc(name string, fn func(*Context) error) *Flow {
+func (f *Flow) StepFunc(name string, fn func(interfaces.ExecutionContext) error) *Flow {
 	step := &namedStep{
 		Step: StepFunc(fn),
 		name: name,
@@ -85,7 +87,7 @@ func (f *Flow) Parallel(name string) *ParallelBuilder {
 }
 
 // Transform adds a transformation step
-func (f *Flow) Transform(name string, transformer func(*Context) error) *Flow {
+func (f *Flow) Transform(name string, transformer func(interfaces.ExecutionContext) error) *Flow {
 	return f.Step(name, NewTransformStep(name, transformer))
 }
 
@@ -111,10 +113,7 @@ func (f *Flow) Retry(maxRetries int, retryDelay time.Duration) *Flow {
 }
 
 // Execute runs the flow with the given context
-func (f *Flow) Execute(ctx *Context) (*ExecutionResult, error) {
-	// Set flow name in context
-	ctx.WithFlowName(f.name)
-
+func (f *Flow) Execute(ctx interfaces.ExecutionContext) (*ExecutionResult, error) {
 	// Apply middleware
 	handler := f.executeSteps
 	for i := len(f.middleware) - 1; i >= 0; i-- {
@@ -129,7 +128,9 @@ func (f *Flow) Execute(ctx *Context) (*ExecutionResult, error) {
 	}
 
 	// Execute with timeout
-	ctx.WithTimeout(f.timeout)
+	if flowCtx, ok := ctx.(*Context); ok {
+		flowCtx.WithTimeout(f.timeout)
+	}
 
 	ctx.Logger().Info("Starting flow execution",
 		zap.String("flow", f.name),
@@ -161,7 +162,7 @@ func (f *Flow) Execute(ctx *Context) (*ExecutionResult, error) {
 }
 
 // executeSteps executes all steps in the flow
-func (f *Flow) executeSteps(ctx *Context) error {
+func (f *Flow) executeSteps(ctx interfaces.ExecutionContext) error {
 	for i, step := range f.steps {
 		stepStart := time.Now()
 
@@ -205,7 +206,7 @@ func (f *Flow) Description() string {
 }
 
 // Steps returns the flow steps
-func (f *Flow) Steps() []Step {
+func (f *Flow) Steps() []interfaces.Step {
 	return f.steps
 }
 
@@ -214,16 +215,16 @@ type ChoiceBuilder struct {
 	flow      *Flow
 	name      string
 	branches  []conditionalBranch
-	otherwise Step
+	otherwise interfaces.Step
 }
 
 type conditionalBranch struct {
-	condition func(*Context) bool
-	steps     []Step
+	condition func(interfaces.ExecutionContext) bool
+	steps     []interfaces.Step
 }
 
 // When adds a conditional branch
-func (cb *ChoiceBuilder) When(condition func(*Context) bool) *WhenBuilder {
+func (cb *ChoiceBuilder) When(condition func(interfaces.ExecutionContext) bool) *WhenBuilder {
 	return &WhenBuilder{
 		choiceBuilder: cb,
 		condition:     condition,
@@ -253,12 +254,12 @@ func (cb *ChoiceBuilder) EndChoice() *Flow {
 // WhenBuilder builds a when branch
 type WhenBuilder struct {
 	choiceBuilder *ChoiceBuilder
-	condition     func(*Context) bool
-	steps         []Step
+	condition     func(interfaces.ExecutionContext) bool
+	steps         []interfaces.Step
 }
 
 // Step adds a step to the when branch
-func (wb *WhenBuilder) Step(name string, step Step) *WhenBuilder {
+func (wb *WhenBuilder) Step(name string, step interfaces.Step) *WhenBuilder {
 	if step.Name() == "anonymous" {
 		step = &namedStep{Step: step, name: name}
 	}
@@ -267,14 +268,14 @@ func (wb *WhenBuilder) Step(name string, step Step) *WhenBuilder {
 }
 
 // StepFunc adds a function step to the when branch
-func (wb *WhenBuilder) StepFunc(name string, fn func(*Context) error) *WhenBuilder {
+func (wb *WhenBuilder) StepFunc(name string, fn func(interfaces.ExecutionContext) error) *WhenBuilder {
 	step := &namedStep{Step: StepFunc(fn), name: name}
 	wb.steps = append(wb.steps, step)
 	return wb
 }
 
 // When adds another conditional branch
-func (wb *WhenBuilder) When(condition func(*Context) bool) *WhenBuilder {
+func (wb *WhenBuilder) When(condition func(interfaces.ExecutionContext) bool) *WhenBuilder {
 	// Add current branch to choice builder
 	wb.choiceBuilder.branches = append(wb.choiceBuilder.branches, conditionalBranch{
 		condition: wb.condition,
@@ -315,11 +316,11 @@ func (wb *WhenBuilder) EndChoice() *Flow {
 // OtherwiseBuilder builds the otherwise branch
 type OtherwiseBuilder struct {
 	choiceBuilder *ChoiceBuilder
-	steps         []Step
+	steps         []interfaces.Step
 }
 
 // Step adds a step to the otherwise branch
-func (ob *OtherwiseBuilder) Step(name string, step Step) *OtherwiseBuilder {
+func (ob *OtherwiseBuilder) Step(name string, step interfaces.Step) *OtherwiseBuilder {
 	if step.Name() == "anonymous" {
 		step = &namedStep{Step: step, name: name}
 	}
@@ -328,7 +329,7 @@ func (ob *OtherwiseBuilder) Step(name string, step Step) *OtherwiseBuilder {
 }
 
 // StepFunc adds a function step to the otherwise branch
-func (ob *OtherwiseBuilder) StepFunc(name string, fn func(*Context) error) *OtherwiseBuilder {
+func (ob *OtherwiseBuilder) StepFunc(name string, fn func(interfaces.ExecutionContext) error) *OtherwiseBuilder {
 	step := &namedStep{Step: StepFunc(fn), name: name}
 	ob.steps = append(ob.steps, step)
 	return ob
@@ -346,11 +347,11 @@ func (ob *OtherwiseBuilder) EndChoice() *Flow {
 type ParallelBuilder struct {
 	flow  *Flow
 	name  string
-	steps []Step
+	steps []interfaces.Step
 }
 
 // Step adds a step to the parallel block
-func (pb *ParallelBuilder) Step(name string, step Step) *ParallelBuilder {
+func (pb *ParallelBuilder) Step(name string, step interfaces.Step) *ParallelBuilder {
 	if step.Name() == "anonymous" {
 		step = &namedStep{Step: step, name: name}
 	}
@@ -359,7 +360,7 @@ func (pb *ParallelBuilder) Step(name string, step Step) *ParallelBuilder {
 }
 
 // StepFunc adds a function step to the parallel block
-func (pb *ParallelBuilder) StepFunc(name string, fn func(*Context) error) *ParallelBuilder {
+func (pb *ParallelBuilder) StepFunc(name string, fn func(interfaces.ExecutionContext) error) *ParallelBuilder {
 	step := &namedStep{Step: StepFunc(fn), name: name}
 	pb.steps = append(pb.steps, step)
 	return pb
@@ -376,10 +377,10 @@ func (pb *ParallelBuilder) EndParallel() *Flow {
 type choiceStep struct {
 	*BaseStep
 	branches  []conditionalBranch
-	otherwise Step
+	otherwise interfaces.Step
 }
 
-func (cs *choiceStep) Run(ctx *Context) error {
+func (cs *choiceStep) Run(ctx interfaces.ExecutionContext) error {
 	// Check each branch condition
 	for _, branch := range cs.branches {
 		if branch.condition(ctx) {
@@ -410,7 +411,7 @@ func (cs *choiceStep) Run(ctx *Context) error {
 
 // namedStep wraps a step with a custom name
 type namedStep struct {
-	Step
+	interfaces.Step
 	name string
 }
 
@@ -426,7 +427,7 @@ type ExecutionResult struct {
 	Duration  time.Duration
 	Success   bool
 	Error     error
-	Context   *Context
+	Context   interfaces.ExecutionContext
 }
 
 // GetResponse returns the context data as a response
@@ -443,10 +444,21 @@ func (er *ExecutionResult) GetResponse() map[string]interface{} {
 	}
 
 	// Add context data
-	response["data"] = er.Context.ToMap()
+	if flowCtx, ok := er.Context.(*Context); ok {
+		response["data"] = flowCtx.ToMap()
+	} else {
+		// For other ExecutionContext implementations, try to get basic data
+		data := make(map[string]interface{})
+		for _, key := range er.Context.Keys() {
+			if val, ok := er.Context.Get(key); ok {
+				data[key] = val
+			}
+		}
+		response["data"] = data
+	}
 
 	return response
 }
 
 // Middleware represents flow middleware
-type Middleware func(next func(*Context) error) func(*Context) error
+type Middleware func(next func(interfaces.ExecutionContext) error) func(interfaces.ExecutionContext) error
