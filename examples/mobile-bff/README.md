@@ -13,6 +13,17 @@ A comprehensive Backend for Frontend (BFF) implementation for mobile app onboard
 - **Performance monitoring** with metrics and logging
 - **Complete test suite** with curl examples
 
+## 🎓 New to BFF Development?
+
+If you're new to building BFF layers, start with our **[Simple BFF Example](../../docs/examples/simple-bff-example/README.md)** first! It demonstrates the core concepts with a minimal, easy-to-understand implementation before diving into this more complex onboarding example.
+
+The simple example covers:
+- Basic flow creation and execution
+- Context propagation between steps
+- Caching patterns
+- Parallel data fetching
+- Mobile optimization
+
 ## 📱 Onboarding Screens
 
 1. **Welcome Screen** - App introduction and getting started
@@ -28,6 +39,9 @@ This example uses WireMock for local mock API development with the following end
 - **Base URL**: `http://localhost:8080` (configurable via `MOCK_API_BASE_URL` env var)
 - **WireMock Admin**: [http://localhost:8082/__admin](http://localhost:8082/__admin)
 - **Alternative**: Use Beeceptor cloud at `https://mobile-bff.free.beeceptor.com`
+
+## Pre requisites
+The root folder has a docker compose with wiremock. This needs to run on port 8082. In case you want to change to another port, modify the `config/config.go` and modify the MOCK_API_BASE_URL to point to this endpoint. 
 
 ### API Endpoints
 
