@@ -86,6 +86,9 @@ func (ct *CopyTransformer) Transform(data map[string]interface{}) (map[string]in
 
 // deepCopyMap creates a deep copy of a map
 func deepCopyMap(original map[string]interface{}) map[string]interface{} {
+	if original == nil {
+		return nil
+	}
 	copy := make(map[string]interface{})
 	for key, value := range original {
 		switch v := value.(type) {
@@ -102,6 +105,9 @@ func deepCopyMap(original map[string]interface{}) map[string]interface{} {
 
 // deepCopySlice creates a deep copy of a slice
 func deepCopySlice(original []interface{}) []interface{} {
+	if original == nil {
+		return nil
+	}
 	copy := make([]interface{}, len(original))
 	for i, value := range original {
 		switch v := value.(type) {

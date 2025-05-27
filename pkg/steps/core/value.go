@@ -265,13 +265,13 @@ func (vs *ValueStep) getFieldValue(ctx *flow.Context, field string) (interface{}
 		value := utils.GetNestedValue(field, ctx)
 		// Check if it's a placeholder (field not found)
 		if strings.HasPrefix(value, "${") && strings.HasSuffix(value, "}") {
-			return nil, fmt.Errorf("field not found: %s", field)
+			return nil, fmt.Errorf("field '%s' not found in context", field)
 		}
 		return value, nil
 	} else {
 		value, exists := ctx.Get(field)
 		if !exists {
-			return nil, fmt.Errorf("field not found: %s", field)
+			return nil, fmt.Errorf("field '%s' not found in context", field)
 		}
 		return value, nil
 	}
@@ -333,7 +333,7 @@ func (vs *ValueStep) convertValueType(value interface{}) (interface{}, error) {
 		// Keep as-is for JSON (would need JSON parsing in real implementation)
 		return value, nil
 	default:
-		return value, nil
+		return nil, fmt.Errorf("unsupported value type: %s", vs.valueType)
 	}
 }
 

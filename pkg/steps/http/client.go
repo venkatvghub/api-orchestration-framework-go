@@ -145,13 +145,14 @@ func NewResilientHTTPClient(config *ClientConfig) *ResilientHTTPClient {
 	fallbackPolicy := createAdvancedFallbackPolicy(config)
 
 	// Create failsafe RoundTripper with policy composition
-	roundTripper := failsafehttp.NewRoundTripper(
-		transport,
-		fallbackPolicy,
-		retryPolicy,
-		circuitBreaker,
-		timeoutPolicy,
-	)
+	// Only include non-nil policies
+	var policies []failsafe.Policy[*http.Response]
+	if fallbackPolicy != nil {
+		policies = append(policies, fallbackPolicy)
+	}
+	policies = append(policies, retryPolicy, circuitBreaker, timeoutPolicy)
+
+	roundTripper := failsafehttp.NewRoundTripper(transport, policies...)
 
 	resilientClient := &ResilientHTTPClient{
 		baseClient: &http.Client{

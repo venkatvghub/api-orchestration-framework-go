@@ -45,6 +45,10 @@ func NewMobileResponseTransformer(fields []string) Transformer {
 // NewMobileListTransformer creates a transformer for mobile list responses
 func NewMobileListTransformer(itemFields []string) Transformer {
 	return NewFuncTransformer("mobile_list", func(data map[string]interface{}) (map[string]interface{}, error) {
+		if err := ValidateTransformerInput(data); err != nil {
+			return nil, err
+		}
+
 		result := make(map[string]interface{})
 
 		// Transform list items if present

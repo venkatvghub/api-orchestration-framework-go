@@ -308,6 +308,29 @@ func (h *HTTPStep) prepareRequest(ctx interfaces.ExecutionContext, bodyBuffer *b
 		req.Header.Set(key, value)
 	}
 
+	// Set user agent
+	if h.userAgent != "" {
+		req.Header.Set("User-Agent", h.userAgent)
+	}
+
+	// Set authentication
+	if h.basicAuth != nil {
+		req.SetBasicAuth(h.basicAuth.Username, h.basicAuth.Password)
+	}
+
+	if h.bearerToken != "" {
+		token, err := utils.InterpolateString(h.bearerToken, ctx)
+		if err != nil {
+			return nil, fmt.Errorf("bearer token interpolation failed: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	// Add cookies
+	for _, cookie := range h.cookies {
+		req.AddCookie(cookie)
+	}
+
 	// Set query parameters
 	if len(h.queryParams) > 0 {
 		q := req.URL.Query()
@@ -326,39 +349,71 @@ func (h *HTTPStep) prepareRequest(ctx interfaces.ExecutionContext, bodyBuffer *b
 
 // prepareBody prepares the request body using the buffer pool
 func (h *HTTPStep) prepareBody(ctx interfaces.ExecutionContext, buffer *bytes.Buffer) error {
-	switch body := h.body.(type) {
-	case string:
-		interpolated, err := utils.InterpolateString(body, ctx)
-		if err != nil {
-			return fmt.Errorf("body interpolation failed: %w", err)
-		}
-		buffer.WriteString(interpolated)
-	case map[string]interface{}:
-		// Interpolate map values
-		interpolatedBody := make(map[string]interface{})
-		for k, v := range body {
-			if str, ok := v.(string); ok {
-				interpolated, err := utils.InterpolateString(str, ctx)
+	switch h.bodyType {
+	case "form":
+		// Handle form-encoded data
+		if formData, ok := h.body.(map[string]string); ok {
+			values := make([]string, 0, len(formData))
+			for key, value := range formData {
+				interpolatedValue, err := utils.InterpolateString(value, ctx)
 				if err != nil {
-					return fmt.Errorf("body field interpolation failed for %s: %w", k, err)
+					return fmt.Errorf("form field interpolation failed for %s: %w", key, err)
 				}
-				interpolatedBody[k] = interpolated
-			} else {
-				interpolatedBody[k] = v
+				values = append(values, fmt.Sprintf("%s=%s", key, interpolatedValue))
 			}
+			buffer.WriteString(strings.Join(values, "&"))
+		} else {
+			return fmt.Errorf("form body must be map[string]string")
 		}
-
-		jsonData, err := json.Marshal(interpolatedBody)
-		if err != nil {
-			return fmt.Errorf("JSON marshaling failed: %w", err)
+	case "raw":
+		// Handle raw data
+		if rawData, ok := h.body.([]byte); ok {
+			buffer.Write(rawData)
+		} else if strData, ok := h.body.(string); ok {
+			interpolated, err := utils.InterpolateString(strData, ctx)
+			if err != nil {
+				return fmt.Errorf("raw body interpolation failed: %w", err)
+			}
+			buffer.WriteString(interpolated)
+		} else {
+			return fmt.Errorf("raw body must be []byte or string")
 		}
-		buffer.Write(jsonData)
 	default:
-		jsonData, err := json.Marshal(body)
-		if err != nil {
-			return fmt.Errorf("JSON marshaling failed: %w", err)
+		// Handle JSON data (default)
+		switch body := h.body.(type) {
+		case string:
+			interpolated, err := utils.InterpolateString(body, ctx)
+			if err != nil {
+				return fmt.Errorf("body interpolation failed: %w", err)
+			}
+			buffer.WriteString(interpolated)
+		case map[string]interface{}:
+			// Interpolate map values
+			interpolatedBody := make(map[string]interface{})
+			for k, v := range body {
+				if str, ok := v.(string); ok {
+					interpolated, err := utils.InterpolateString(str, ctx)
+					if err != nil {
+						return fmt.Errorf("body field interpolation failed for %s: %w", k, err)
+					}
+					interpolatedBody[k] = interpolated
+				} else {
+					interpolatedBody[k] = v
+				}
+			}
+
+			jsonData, err := json.Marshal(interpolatedBody)
+			if err != nil {
+				return fmt.Errorf("JSON marshaling failed: %w", err)
+			}
+			buffer.Write(jsonData)
+		default:
+			jsonData, err := json.Marshal(body)
+			if err != nil {
+				return fmt.Errorf("JSON marshaling failed: %w", err)
+			}
+			buffer.Write(jsonData)
 		}
-		buffer.Write(jsonData)
 	}
 	return nil
 }
@@ -367,6 +422,20 @@ func (h *HTTPStep) prepareBody(ctx interfaces.ExecutionContext, buffer *bytes.Bu
 func (h *HTTPStep) processResponse(ctx interfaces.ExecutionContext, resp *http.Response) error {
 	start := time.Now() // Define start time for this method
 
+	// Check expected status codes
+	if len(h.expectedStatus) > 0 {
+		statusOK := false
+		for _, expectedCode := range h.expectedStatus {
+			if resp.StatusCode == expectedCode {
+				statusOK = true
+				break
+			}
+		}
+		if !statusOK {
+			return fmt.Errorf("unexpected status code: %d, expected one of %v", resp.StatusCode, h.expectedStatus)
+		}
+	}
+
 	// Read response body
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -374,21 +443,25 @@ func (h *HTTPStep) processResponse(ctx interfaces.ExecutionContext, resp *http.R
 	}
 
 	// Parse response based on content type
-	var responseData map[string]interface{}
+	var responseBody interface{}
 	contentType := resp.Header.Get("Content-Type")
 
-	if strings.Contains(contentType, "application/json") {
-		if err := json.Unmarshal(bodyBytes, &responseData); err != nil {
+	if strings.Contains(contentType, "application/json") && len(bodyBytes) > 0 {
+		if err := json.Unmarshal(bodyBytes, &responseBody); err != nil {
 			// If JSON parsing fails, store as string
-			responseData = map[string]interface{}{
-				"raw_response": string(bodyBytes),
-			}
+			responseBody = string(bodyBytes)
 		}
 	} else {
 		// Store non-JSON responses as string
-		responseData = map[string]interface{}{
-			"raw_response": string(bodyBytes),
-		}
+		responseBody = string(bodyBytes)
+	}
+
+	// Create response data structure
+	responseData := map[string]interface{}{
+		"body":         responseBody,
+		"status_code":  resp.StatusCode,
+		"headers":      resp.Header,
+		"content_type": contentType,
 	}
 
 	// Apply transformer if configured
@@ -448,9 +521,14 @@ func NewJSONAPIStep(method, url string) *HTTPStep {
 
 // NewMobileAPIStep creates an HTTP step optimized for mobile responses
 func NewMobileAPIStep(method, url string, fields []string) *HTTPStep {
-	return NewJSONAPIStep(method, url).
-		WithTransformer(transformers.NewMobileTransformer(fields)).
-		WithValidator(validators.NewRequiredFieldsValidator("status"))
+	step := NewJSONAPIStep(method, url).
+		WithUserAgent("mobile-app/1.0")
+
+	if len(fields) > 0 {
+		step.WithQueryParam("fields", strings.Join(fields, ","))
+	}
+
+	return step
 }
 
 // NewAuthenticatedStep creates an HTTP step with authentication
